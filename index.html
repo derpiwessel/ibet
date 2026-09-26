@@ -606,15 +606,28 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     render();
   }
   function signIn(){
-    if(!sb) return toast('Can’t reach the server. Reload and try again.');
+    if(!sb) return toast('Can\u2019t reach the server. Reload and try again.');
     var prov=walletProvider();
     if(!prov){ toast('No Solana wallet found. Install Phantom, or open i-bet.fun in the Phantom app.'); window.open('https://phantom.com/download','_blank','noopener'); return; }
-    Promise.resolve((typeof prov.signIn==='function' || prov.publicKey) ? null : prov.connect()).then(function(){
-      return sb.auth.signInWithWeb3({ chain:'solana', statement:'Sign in to ibet. Free — this sends no transaction.', wallet:prov });
+    // Connect first, then sign a plain message (works with Phantom, Solflare, Backpack).
+    Promise.resolve(prov.isConnected && prov.publicKey ? null : prov.connect()).then(function(){
+      if(!prov.publicKey || typeof prov.signMessage!=='function') throw new Error('Wallet does not support message signing');
+      var wallet = {
+        publicKey: prov.publicKey,
+        signMessage: function(msg, enc){ return Promise.resolve(prov.signMessage(msg, enc)).then(function(r){ return (r && r.signature) ? r.signature : r; }); }
+      };
+      return sb.auth.signInWithWeb3({ chain:'solana', statement:'Sign in to ibet. Free, this sends no transaction.', wallet:wallet });
     }).then(function(r){
-      if(r.error) throw r.error;
+      if(r && r.error) throw r.error;
       toast('Wallet connected. You start with '+START+' demo SOL.');
-    }).catch(function(e){ toast(/reject|cancel|denied/i.test(String(e&&e.message))?'Sign-in cancelled.':'Couldn’t sign in with that wallet. Try again.'); });
+    }).catch(function(e){
+      var m=String((e&&e.message)||e||'');
+      if(window.console) console.error('ibet sign-in failed:', e);
+      if(/reject|cancel|denied|declined/i.test(m)) toast('Sign-in cancelled.');
+      else if(/provider.*(disabled|not enabled)|web3.*disabled/i.test(m)) toast('Wallet sign-in is not enabled on the server yet.');
+      else if(/uri|url|redirect|domain/i.test(m)) toast('This site address is not allowed for sign-in yet (Supabase URL settings).');
+      else toast('Couldn\u2019t sign in: '+m.slice(0,120));
+    });
   }
   function accountMenu(){
     openModal('<h3 id="mTitle">Your wallet</h3><p style="word-break:break-all">'+esc(S.wallet||'')+'</p>'+
