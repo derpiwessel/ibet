@@ -609,13 +609,18 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     if(!sb) return toast('Can\u2019t reach the server. Reload and try again.');
     var prov=walletProvider();
     if(!prov){ toast('No Solana wallet found. Install Phantom, or open i-bet.fun in the Phantom app.'); window.open('https://phantom.com/download','_blank','noopener'); return; }
-    // Connect first, then sign a plain message (works with Phantom, Solflare, Backpack).
-    Promise.resolve(prov.isConnected && prov.publicKey ? null : prov.connect()).then(function(){
-      if(!prov.publicKey || typeof prov.signMessage!=='function') throw new Error('Wallet does not support message signing');
-      var wallet = {
-        publicKey: prov.publicKey,
-        signMessage: function(msg, enc){ return Promise.resolve(prov.signMessage(msg, enc)).then(function(r){ return (r && r.signature) ? r.signature : r; }); }
-      };
+    // Phantom (and other wallets with Sign In With Solana) build the sign-in message themselves.
+    // Only fall back to plain message signing for wallets without signIn().
+    var useSignIn = typeof prov.signIn === 'function';
+    Promise.resolve(useSignIn || (prov.isConnected && prov.publicKey) ? null : prov.connect()).then(function(){
+      var wallet = prov;
+      if(!useSignIn){
+        if(!prov.publicKey || typeof prov.signMessage!=='function') throw new Error('Wallet does not support message signing');
+        wallet = {
+          publicKey: prov.publicKey,
+          signMessage: function(msg, enc){ return Promise.resolve(prov.signMessage(msg, enc)).then(function(r){ return (r && r.signature) ? r.signature : r; }); }
+        };
+      }
       return sb.auth.signInWithWeb3({ chain:'solana', statement:'Sign in to ibet. Free, this sends no transaction.', wallet:wallet });
     }).then(function(r){
       if(r && r.error) throw r.error;
