@@ -1,0 +1,924 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ibet — Bet on what happens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@700;800&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#0C0C0D;--row:#141416;--row-line:#232326;--card:#101012;--field-line:#2A2A2E;
+  --text:#FFFFFF;--text2:#E4E4E7;--muted:#9C9CA3;--faint:#6E6E75;--divider:#2C2C30;
+  --green:#4ADE80;--red:#F2545B;--flame:#F0493E;
+  --btn:#F5F5F5;--btn-fg:#0C0C0D;--btn-idle:#CFCFD1;--btn-idle-fg:#2A2A2E;
+  --shadow:0 18px 50px rgba(0,0,0,.55);
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#F7F7F6;--row:#FFFFFF;--row-line:#E6E6E8;--card:#FFFFFF;--field-line:#DCDCDF;
+    --text:#0C0C0D;--text2:#27272A;--muted:#5C5C63;--faint:#75757C;--divider:#E0E0E3;
+    --green:#16A34A;--red:#DC3A41;--flame:#E0392F;
+    --btn:#0C0C0D;--btn-fg:#FFFFFF;--btn-idle:#D4D4D8;--btn-idle-fg:#3F3F46;--shadow:0 18px 50px rgba(0,0,0,.12);color-scheme:light;
+  }
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ color-scheme:dark; } }
+:root[data-theme="dark"]{--bg:#0C0C0D;--row:#141416;--row-line:#232326;--card:#101012;--field-line:#2A2A2E;--text:#FFFFFF;--text2:#E4E4E7;--muted:#9C9CA3;--faint:#6E6E75;--divider:#2C2C30;--green:#4ADE80;--red:#F2545B;--btn:#F5F5F5;--btn-fg:#0C0C0D;--btn-idle:#CFCFD1;--btn-idle-fg:#2A2A2E;color-scheme:dark}
+:root[data-theme="light"]{--bg:#F7F7F6;--row:#FFFFFF;--row-line:#E6E6E8;--card:#FFFFFF;--field-line:#DCDCDF;--text:#0C0C0D;--text2:#27272A;--muted:#5C5C63;--faint:#75757C;--divider:#E0E0E3;--green:#16A34A;--red:#DC3A41;--btn:#0C0C0D;--btn-fg:#FFFFFF;--btn-idle:#D4D4D8;--btn-idle-fg:#3F3F46;color-scheme:light}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter','Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1,"cv11" 1}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:inherit}
+.wrap{max-width:1440px;margin:0 auto;padding:0 clamp(16px,3.4vw,48px)}
+:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.wbtn{height:48px;padding:0 20px;border-radius:10px;border:none;background:var(--btn);color:var(--btn-fg);font-weight:600;font-size:15px;display:inline-flex;align-items:center;justify-content:center;gap:10px;white-space:nowrap;transition:transform .08s,opacity .15s}
+.wbtn:active{transform:scale(.98)}
+.wbtn:disabled{opacity:.45;cursor:not-allowed}
+.wbtn.ghost{background:transparent;color:var(--text);border:1px solid var(--field-line)}
+
+/* ── nav ── */
+header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.nav{height:92px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px}
+.logo{justify-self:start;font-family:'Inter Tight','Inter',sans-serif;font-weight:800;font-size:46px;letter-spacing:-.05em;line-height:1;background:none;border:none;padding:0;color:var(--text)}
+.links{display:flex;gap:26px}
+.links button{background:none;border:none;color:var(--muted);font-size:15px;font-weight:400;padding:10px 6px;min-height:44px}
+.links button[aria-current="page"]{color:var(--text);font-weight:500}
+.navr{justify-self:end;display:flex;align-items:center;gap:12px}
+.balpill{font-size:14px;color:var(--muted);white-space:nowrap}
+.balpill b{color:var(--text);font-weight:600}
+@media (max-width:760px){.nav{grid-template-columns:auto 1fr;height:76px}.links{display:none}.logo{font-size:38px}.navr{justify-self:end}.balpill{display:none}}
+
+/* ── hero ── */
+.hero{position:relative;padding:34px 0 72px;text-align:center}
+.hero-in{position:relative;z-index:1}
+.hero h1{margin:0;font-family:'Inter Tight','Inter',sans-serif;font-weight:800;font-size:clamp(58px,7.6vw,110px);line-height:.9;letter-spacing:-.055em;
+  background:linear-gradient(180deg,#FFFFFF 0%,#EDEDED 55%,#BDBDBD 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+  text-shadow:0 0 60px rgba(255,255,255,.08)}
+:root[data-theme="light"] .hero h1{background:none;color:var(--text);text-shadow:none}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]) .hero h1{background:none;color:var(--text);text-shadow:none}}
+.hero p{margin:24px auto 30px;max-width:620px;font-size:clamp(16px,1.5vw,19px);color:#C4C4C9;font-weight:400;letter-spacing:.005em}
+:root[data-theme="light"] .hero p{color:var(--muted)}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]) .hero p{color:var(--muted)}}
+.hero .wbtn{height:50px;padding:0 26px;font-size:16px}
+.deco{position:absolute;top:0;width:330px;height:380px;pointer-events:none}
+.deco.l{left:-10px}.deco.r{right:-10px}
+.ph{position:absolute;width:210px;height:330px;border-radius:34px;border:1.5px solid #2E2E33;background:linear-gradient(180deg,#141416 0%,#0C0C0D 85%);overflow:hidden}
+.ph.back{opacity:.45}
+.deco.l .ph.back{left:0;top:40px;transform:rotate(14deg)}
+.deco.l .ph.front{left:66px;top:18px;transform:rotate(14deg);box-shadow:0 30px 60px rgba(0,0,0,.6)}
+.deco.r .ph.front{right:66px;top:10px;transform:rotate(-14deg);box-shadow:0 30px 60px rgba(0,0,0,.6)}
+.deco.r .ph.back{right:0;top:50px;transform:rotate(-14deg)}
+.ph svg{position:absolute;inset:0}
+.ph::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,rgba(12,12,13,.9) 100%)}
+.chip{position:absolute;display:flex;align-items:center;gap:14px;padding:14px 20px 14px 16px;border-radius:16px;background:rgba(28,28,31,.92);border:1px solid #34343A;text-align:left;box-shadow:var(--shadow);backdrop-filter:blur(6px)}
+.chip b{display:block;font-size:19px;font-weight:700;letter-spacing:-.01em;color:#fff}
+.chip span{font-size:16px;color:#E4E4E7}
+.deco.l .chip{left:58px;top:150px;transform:rotate(14deg)}
+.deco.r .chip{right:44px;top:170px;transform:rotate(-12deg)}
+.dot{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none}
+@media (max-width:1180px){.deco{display:none}}
+
+/* ── toolbar ── */
+.bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:22px}
+.tabs{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.tab{height:52px;padding:0 30px;border-radius:999px;border:none;background:transparent;color:var(--muted);font-size:15px;display:inline-flex;align-items:center;gap:10px}
+.tab svg{flex:none}
+.tab[aria-selected="true"]{background:var(--btn);color:var(--btn-fg);font-weight:500;padding:0 38px}
+.tab .count{font-size:12px;color:var(--faint);font-weight:500}
+.tab[aria-selected="true"] .count{color:#6E6E75}
+.selwrap{position:relative}
+.selwrap svg{position:absolute;right:16px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--text)}
+.sel{appearance:none;-webkit-appearance:none;height:52px;padding:0 48px 0 18px;border-radius:12px;border:1px solid var(--field-line);background:var(--bg);color:var(--text);min-width:160px;font-size:15px}
+.sel option{background:var(--row);color:var(--text)}
+
+/* ── rows ── */
+.list{display:flex;flex-direction:column;gap:10px;min-height:120px}
+.row{display:grid;grid-template-columns:minmax(180px,1.35fr) minmax(170px,1.05fr) minmax(130px,.85fr) 60px minmax(190px,1.35fr) auto;align-items:center;height:104px;padding:0 20px 0 22px;border-radius:16px;border:1px solid var(--row-line);background:var(--row)}
+.cell{display:flex;align-items:center;gap:18px;min-width:0}
+.stack{display:flex;flex-direction:column;gap:5px;min-width:0}
+.stack .t{font-weight:600;font-size:18px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+.stack .t.big{font-weight:700;font-size:21px}
+.stack .s{font-size:14px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stack .s.sm{font-size:13px}
+.coin{position:relative;overflow:hidden;width:52px;height:52px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;color:#0C0C0D;font-weight:700;font-size:13px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+.ava{width:48px;height:48px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:#2A2A2E;font-size:14px;font-weight:600;color:#E4E4E7;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+.ava.open{background:transparent;border:1.5px dashed #3F3F46;box-shadow:none;color:var(--faint)}
+.days{font-size:17px;color:var(--text2);white-space:nowrap}
+.cell.time{height:44px;border-right:1px solid var(--divider);padding-right:12px}
+.vs{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:100%}
+.vs i{display:block;width:1px;height:18px;background:var(--divider)}
+.vs span{font-size:13px;color:var(--faint);letter-spacing:.02em}
+.cell.who{padding-left:26px}
+.act{display:flex;justify-content:flex-end;gap:8px}
+.act .wbtn{width:150px;height:48px;border-radius:8px;font-size:16px}
+.ca{display:flex;align-items:center;gap:8px}
+.cabtn{background:none;border:none;padding:0;color:inherit;font:inherit;min-height:24px}
+.cabtn:hover,.ca a:hover{color:var(--text)}
+.ca a{color:var(--faint);text-decoration:none;display:inline-flex}
+.pill{height:40px;padding:0 16px;border-radius:999px;display:inline-flex;align-items:center;font-size:14px;font-weight:600;white-space:nowrap}
+.pill.win{background:rgba(74,222,128,.12);color:var(--green)}
+.pill.lose{background:rgba(242,84,91,.12);color:var(--red)}
+.pill.wait{background:#1E1E21;color:var(--muted)}
+.empty{border:1px dashed var(--field-line);border-radius:16px;padding:52px 20px;text-align:center;color:var(--muted)}
+.empty b{display:block;color:var(--text);font-size:18px;margin-bottom:6px;font-weight:600}
+@media (max-width:980px){
+  .row{grid-template-columns:1fr 1fr;height:auto;padding:18px;row-gap:16px}
+  .vs{display:none}
+  .cell.time{border-right:none;height:auto}
+  .cell.who{padding-left:0}
+  .row .act{grid-column:1/-1}.act .wbtn{flex:1;width:auto}
+}
+
+/* ── modal fields ── */
+.field{position:relative;height:80px;padding:0 18px;border-radius:12px;border:1px solid var(--field-line);display:flex;align-items:center;gap:16px;background:transparent}
+.field:focus-within{border-color:#55555C}
+.fbody{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.fbody label{font-size:13px;color:var(--muted)}
+.fbody input{background:transparent;border:none;outline:none;font-size:17px;padding:0;width:100%;color:var(--text)}
+.fbody input::placeholder{color:#5E5E65}
+.money{display:flex;align-items:baseline;gap:6px;font-size:17px}
+
+/* ── create wizard ── */
+.coin img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%;background:var(--row)}
+.wiz{position:relative;margin:36px 0 0;padding:44px clamp(18px,4vw,56px) 36px;border-radius:22px;border:1px solid var(--row-line);background:var(--card)}
+.wiz-top{position:absolute;top:22px;right:24px}
+.stepper{list-style:none;margin:0 auto 44px;padding:0;display:flex;justify-content:center;align-items:flex-start}
+.stepper li{display:flex;flex-direction:column;align-items:center;gap:12px;width:180px;position:relative;font-size:16px;color:var(--muted)}
+.stepper li+li::before{content:"";position:absolute;top:19px;right:calc(50% + 29px);width:calc(100% - 58px);height:1px;background:var(--divider)}
+
+.stepper .n{width:38px;height:38px;border-radius:50%;border:1.5px solid #55555C;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--muted);background:var(--card);position:relative;z-index:1}
+.stepper li.cur{color:var(--text)}
+.stepper li.cur .n,.stepper li.done .n{background:var(--green);border-color:var(--green);color:#0C0C0D;font-weight:600}
+.stepper li.done{color:var(--text2)}
+.stepper button{background:none;border:none;padding:0;color:inherit;display:flex;flex-direction:column;align-items:center;gap:12px;font:inherit}
+.stepper button:disabled{cursor:default}
+.wiz h2{margin:0;text-align:center;font-family:'Inter Tight','Inter',sans-serif;font-weight:700;font-size:clamp(40px,4.6vw,64px);letter-spacing:-.035em;line-height:1.05}
+.wiz .sub{margin:14px 0 40px;text-align:center;font-size:clamp(17px,1.6vw,22px);color:var(--muted)}
+.wiz-in{max-width:1080px;margin:0 auto}
+.cabox{display:flex;align-items:center;gap:18px;height:100px;padding:0 14px 0 30px;border-radius:14px;border:1px solid #3A3A40;background:transparent}
+.cabox:focus-within{border-color:#6B6B73}
+.cabox.bad{border-color:var(--red)}
+.cabox input{flex:1;min-width:0;background:transparent;border:none;outline:none;font-size:clamp(16px,1.6vw,21px);color:var(--text)}
+.cabox input::placeholder{color:#8A8A93}
+.nextbtn{height:72px;padding:0 34px;border-radius:10px;border:none;background:#2A2A2E;color:#B4B4BB;font-size:20px;font-weight:500;display:inline-flex;align-items:center;gap:16px;flex:none;transition:background .15s,color .15s}
+.nextbtn.ready{background:var(--btn);color:var(--btn-fg);font-weight:600}
+.nextbtn:disabled{cursor:not-allowed}
+.orline{display:flex;align-items:center;gap:26px;margin:40px auto 30px;max-width:740px;color:var(--muted);font-size:19px}
+.orline::before,.orline::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--divider) 30%,var(--divider) 70%,transparent)}
+.poplbl{font-size:19px;color:var(--muted);margin:0}
+.pophead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:0 0 16px;flex-wrap:wrap}
+.asof{font-size:13px;color:var(--faint)}
+.editlink{background:none;border:none;color:var(--muted);font-size:14px;text-decoration:underline;text-underline-offset:3px;padding:8px 0;min-height:44px}
+.editlink:hover{color:var(--text)}
+
+.popc b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pop{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.popc{height:96px;min-width:0;border-radius:12px;border:1px solid var(--row-line);background:transparent;display:flex;align-items:center;gap:16px;padding:0 18px;text-align:left;transition:border-color .15s,background .15s}
+.popc:hover{border-color:#44444A;background:var(--row)}
+.popc .coin{width:48px;height:48px;font-size:11px}
+.popc b{display:block;font-size:18px;font-weight:600;color:var(--text)}
+.popc span{display:block;font-size:16px;color:var(--muted);margin-top:4px}
+@media (max-width:1000px){.pop{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:620px){.pop{grid-template-columns:repeat(2,minmax(0,1fr))}.cabox{height:auto;flex-wrap:wrap;padding:16px}.cabox input{height:48px}.nextbtn{width:100%;justify-content:center;height:56px}}
+.wiz-foot{margin:56px 0 0;text-align:center;font-size:15px;color:var(--muted)}
+/* step 2 */
+.coinhead{display:flex;align-items:center;justify-content:center;gap:14px;margin:14px 0 40px;color:var(--muted);font-size:17px}
+.coinhead .coin{width:36px;height:36px;font-size:10px}
+.coinhead a{color:var(--muted)}
+.betgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.bx{border:1px solid var(--row-line);border-radius:14px;padding:18px 22px;display:flex;flex-direction:column;gap:12px}
+.bx>label,.bx>.lbl{font-size:14px;color:var(--muted)}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg button{height:60px;border-radius:10px;border:1px solid var(--field-line);background:transparent;color:var(--muted);font-size:17px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:10px}
+.seg button[aria-pressed="true"].up{border-color:var(--green);color:var(--green);background:rgba(74,222,128,.08)}
+.seg button[aria-pressed="true"].down{border-color:var(--red);color:var(--red);background:rgba(242,84,91,.08)}
+.bigin{display:flex;align-items:baseline;gap:8px;font-size:30px;font-weight:600;letter-spacing:-.02em}
+.bigin input{flex:1;min-width:0;background:transparent;border:none;outline:none;font-size:30px;font-weight:600;letter-spacing:-.02em;color:var(--text);padding:0}
+.bigin input::placeholder{color:#4A4A50}
+.bigin .u{color:var(--muted);font-size:20px;font-weight:500}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chips button{height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--field-line);background:transparent;color:var(--muted);font-size:15px}
+.chips button[aria-pressed="true"]{background:var(--btn);border-color:var(--btn);color:var(--btn-fg);font-weight:600}
+.tkin{background:transparent;border:none;outline:none;font-size:20px;font-weight:600;color:var(--text);padding:0;text-transform:uppercase}
+.tkin::placeholder{text-transform:none;color:#4A4A50;font-weight:500}
+.wnav{display:flex;justify-content:space-between;gap:12px;margin-top:28px}
+.wnav .wbtn{height:60px;padding:0 30px;font-size:17px}
+.wnav .nextbtn{height:60px;font-size:17px;padding:0 30px}
+.whint{margin:14px 2px 0;font-size:14px;color:var(--muted);min-height:20px;text-align:center}
+@media (max-width:760px){.betgrid{grid-template-columns:1fr}}
+/* step 2 call */
+.mcapcard{max-width:560px;margin:0 auto;border:1px solid var(--row-line);border-radius:16px;padding:20px 26px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;background:var(--row)}
+.mclbl{font-size:14px;color:var(--muted)}
+.mcval{font-family:'Inter Tight','Inter',sans-serif;font-size:48px;font-weight:700;letter-spacing:-.035em;line-height:1.1}
+.bigin.big{justify-content:center;font-size:44px;font-weight:700;letter-spacing:-.03em;font-family:'Inter Tight','Inter',sans-serif}
+.bigin.big input{font-size:44px;font-weight:700;letter-spacing:-.03em;font-family:'Inter Tight','Inter',sans-serif;text-align:center;flex:0 1 auto;width:100%;max-width:380px}
+.bigin.big input::placeholder{font-size:20px;font-weight:500;letter-spacing:0;font-family:'Inter',sans-serif}
+.mcnote{font-size:13px;color:var(--faint)}.mcnote a{color:var(--muted)}
+.callq{margin:34px 0 14px;text-align:center;font-size:17px;color:var(--muted)}
+.callseg{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:560px;margin:0 auto}
+.callseg button{height:84px;border-radius:14px;border:1px solid var(--field-line);background:transparent;color:var(--text);font-size:22px;font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;justify-content:center;gap:12px;transition:border-color .15s,background .15s,color .15s}
+.callseg button.up svg{color:var(--green)}.callseg button.down svg{color:var(--red)}
+.callseg button:hover{border-color:#55555C}
+.callseg button[aria-pressed="true"].up{border-color:var(--green);background:rgba(74,222,128,.1);color:var(--green)}
+.callseg button[aria-pressed="true"].down{border-color:var(--red);background:rgba(242,84,91,.1);color:var(--red)}
+.details{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:26px;animation:dIn .25s ease-out}
+@keyframes dIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.details{animation:none}}
+.tgtrow{display:grid;grid-template-columns:1fr auto;align-items:end;gap:4px 16px;margin-top:6px}
+.tgtrow .lbl{grid-column:1/-1;font-size:14px;color:var(--muted)}
+.tgtpct{font-size:15px;color:var(--muted);white-space:nowrap;padding-bottom:6px}
+.betline{text-align:center;font-size:17px;color:var(--muted);min-height:24px}
+.betline b{color:var(--text)}
+@media (max-width:760px){.details{grid-template-columns:1fr}}
+/* step 3 */
+.recap{max-width:620px;margin:0 auto;border:1px solid var(--row-line);border-radius:16px;overflow:hidden}
+.recap div{display:flex;justify-content:space-between;gap:16px;padding:18px 22px;border-top:1px solid var(--row-line);font-size:17px}
+.recap div:first-child{border-top:none}
+.recap span:first-child{color:var(--muted)}
+.recap span:last-child{font-weight:600;text-align:right}
+.recap .hl{background:var(--row)}
+.wiz .wnav.narrow{max-width:620px;margin-left:auto;margin-right:auto}
+
+/* ── leaderboard ── */
+.lb{border:1px solid var(--row-line);border-radius:16px;overflow:hidden;background:var(--row)}
+.lb .lr{display:grid;grid-template-columns:56px 1fr 120px 120px 140px;align-items:center;padding:16px 22px;border-top:1px solid var(--row-line);gap:8px}
+.lb .lr:first-child{border-top:none;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.lb .rank{font-weight:700;color:var(--muted)}
+.pos{color:var(--green)}.neg{color:var(--red)}
+@media (max-width:640px){.lb .lr{grid-template-columns:40px 1fr 100px}.lb .hide-s{display:none}}
+
+/* ── modal/toast ── */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
+.modal{width:100%;max-width:440px;background:var(--row);border:1px solid var(--field-line);border-radius:20px;padding:26px;box-shadow:var(--shadow)}
+.modal h3{margin:0 0 8px;font-size:24px;font-family:'Inter Tight','Inter',sans-serif;font-weight:800;letter-spacing:-.03em}
+.modal p{margin:0 0 18px;color:var(--muted);line-height:1.5}
+.modal .field{height:72px;margin-bottom:10px}
+.summary{border:1px solid var(--row-line);border-radius:12px;padding:4px 16px;margin-bottom:20px}
+.summary div{display:flex;justify-content:space-between;padding:11px 0;border-top:1px solid var(--row-line);font-size:15px}
+.summary div:first-child{border-top:none}
+.summary span:first-child{color:var(--muted)}
+.mact{display:flex;gap:10px}.mact .wbtn{flex:1}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--btn);color:var(--btn-fg);padding:12px 18px;border-radius:12px;font-size:14px;font-weight:500;z-index:60;box-shadow:var(--shadow);max-width:calc(100% - 32px)}
+.banner{margin:0 0 18px;padding:12px 16px;border-radius:12px;border:1px solid var(--row-line);background:var(--row);font-size:13px;color:var(--muted)}
+footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--faint)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <button class="logo" data-go="bet" aria-label="ibet home">ibet</button>
+    <nav class="links" aria-label="Main">
+      <button data-go="bet" aria-current="page">Bet</button>
+      <button data-go="mine">My Bets</button>
+      <button data-go="leader">Leaderboard</button>
+    </nav>
+    <div class="navr">
+      <span class="balpill" id="balpill"></span>
+      <button class="wbtn" id="walletBtn" data-wallet="1">
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 4h12a2 2 0 0 1 2 2v1H5.5a.5.5 0 0 0 0 1H20a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Zm12 10.25a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5Z"/></svg>
+        <span id="walletLbl">Connect Wallet</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main>
+<section class="hero wrap" aria-labelledby="h1">
+  <div class="deco l" aria-hidden="true">
+    <div class="ph back"></div>
+    <div class="ph front"><svg width="210" height="330" viewBox="0 0 210 330" fill="none">
+      <defs><filter id="gg" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="3"/></filter></defs>
+      <polyline filter="url(#gg)" opacity=".55" points="0,262 12,256 20,262 30,250 40,256 52,238 62,244 74,226 84,232 96,214 106,220 118,196 128,204 140,176 150,184 162,152 172,160 184,124 194,134 210,98" stroke="#4ADE80" stroke-width="3"/>
+      <polyline points="0,262 12,256 20,262 30,250 40,256 52,238 62,244 74,226 84,232 96,214 106,220 118,196 128,204 140,176 150,184 162,152 172,160 184,124 194,134 210,98" stroke="#4ADE80" stroke-width="2" stroke-linejoin="round"/></svg></div>
+    <div class="chip"><div class="dot" style="background:#4ADE80"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0C0C0D" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg></div><div><b>$10M</b><span>in 7 days?</span></div></div>
+  </div>
+  <div class="deco r" aria-hidden="true">
+    <div class="ph back"></div>
+    <div class="ph front"><svg width="210" height="330" viewBox="0 0 210 330" fill="none">
+      <defs><filter id="gr" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="3"/></filter></defs>
+      <polyline filter="url(#gr)" opacity=".55" points="0,96 10,110 18,92 28,120 38,104 48,136 58,124 68,156 78,146 90,184 100,172 112,204 122,196 134,230 144,222 158,256 170,248 186,284 210,300" stroke="#F2545B" stroke-width="3"/>
+      <polyline points="0,96 10,110 18,92 28,120 38,104 48,136 58,124 68,156 78,146 90,184 100,172 112,204 122,196 134,230 144,222 158,256 170,248 186,284 210,300" stroke="#F2545B" stroke-width="2" stroke-linejoin="round"/></svg></div>
+    <div class="chip"><div class="dot" style="background:#F2545B"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0C0C0D" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div><div><b>$1M</b><span>in 3 days?</span></div></div>
+  </div>
+  <div class="hero-in">
+    <h1 id="h1">Bet on<br>what happens.</h1>
+    <p>Pick a coin. Set a target. Find a taker. Winner takes it all.</p>
+    <button class="wbtn" id="heroCta" data-wallet="1">Connect Wallet</button>
+  </div>
+</section>
+
+<section class="wrap" id="betView" aria-label="Bets">
+  <div class="banner" id="banner" hidden></div>
+  <div class="bar">
+    <div class="tabs" role="tablist" aria-label="Bet status" id="tabs"></div>
+    <div class="selwrap">
+      <select class="sel" id="coinFilter" aria-label="Filter by coin"><option value="">All Coins</option></select>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+  </div>
+  <div class="list" id="list" aria-live="polite"></div>
+
+  <section class="wiz" id="createForm" aria-labelledby="wTitle">
+    <div class="wiz-top"><span class="balpill" id="balpill2"></span></div>
+    <ol class="stepper" id="stepper" aria-label="Create a bet"></ol>
+    <div id="wizBody"></div>
+    <p class="wiz-foot">Bet with anyone. On anything.</p>
+  </section>
+</section>
+
+<section class="wrap" id="leaderView" aria-labelledby="lbh" hidden>
+  <h2 id="lbh" style="font-family:'Inter Tight','Inter',sans-serif;font-weight:800;font-size:clamp(40px,5vw,64px);letter-spacing:-.045em;margin:0 0 22px">Leaderboard</h2>
+  <div class="lb" id="lb"></div>
+</section>
+</main>
+
+<footer class="wrap">
+  <span>ibet beta · play money only · balances are demo SOL, not real funds</span>
+  <span>Any Solana token by CA · check the chart before you bet.</span>
+</footer>
+
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
+<script>
+(function(){
+  'use strict';
+  var START = 10;
+  var CA_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  var TICK_RE = /^[A-Za-z0-9]{1,10}$/;
+  function coinColor(ca){ var h=0; for(var i=0;i<ca.length;i++) h=(h*31+ca.charCodeAt(i))>>>0; return 'hsl('+(h%360)+' 62% 66%)'; }
+  function shortCa(ca){ return ca.slice(0,4)+'…'+ca.slice(-4); }
+  function label(b){ return b.ticker ? b.ticker.toUpperCase() : shortCa(b.ca); }
+  var LOGOS = {
+    'GTBxUiw6wJdmmkCGZgRHLyYxqu1vG4KtRpeox6yDpump':'/logos/jeanphil.jpg',
+    'A13oRB9FFaiUjfi6LdCg6p9ka1u8SfGkUFs4SKvPpump':'/logos/toad.jpg',
+    '98kfF7rmsg1QDUEoCqNE7g7M1FdrTt92TEp2CLzypump':'/logos/paid.jpg',
+    'CbyTNf7UPzvewHh4Zp6umogM2RWahhmGRJWLJnPwpump':'/logos/biketyson.jpg'
+  };
+  function safeLogo(u){ if(typeof u==='string') u=u.replace(/^(\/logos\/[\w-]+)\.png$/,'$1.jpg'); return typeof u==='string' && (/^\/logos\/[\w.-]+$/.test(u) || /^https:\/\/[^\s"'<>]+$/.test(u)) ? u : null; }
+  function coinAva(ca, text){
+    var id = LOGOS[ca];
+    return '<div class="coin" style="background:'+coinColor(ca)+'">'+esc(text)+
+      (id ? '<img src="'+esc(id)+'" alt="" loading="lazy" onerror="this.remove()">' : '')+'</div>';
+  }
+  function badge(b){ return (b.ticker ? b.ticker.toUpperCase() : b.ca).slice(0,4); }
+
+  var S = { bets:[], me:null, owner:false, names:{}, tab:'open', view:'bet', coin:'', dir:'above', mode:'loading', busy:{}, wallet:null };
+  var $ = function(id){ return document.getElementById(id); };
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function fmtCap(n){
+    if(!isFinite(n)) return '$—';
+    var a=Math.abs(n), u=[[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e3,'K']];
+    for(var i=0;i<u.length;i++){ if(a>=u[i][0]){ var v=n/u[i][0]; return '$'+(+v.toFixed(v<10?2:1))+u[i][1]; } }
+    return '$'+Math.round(n);
+  }
+  function fmtSol(n){ return (+(+n).toFixed(3))+' SOL'; }
+  function parseCap(str){
+    if(!str) return NaN;
+    var s=String(str).trim().toUpperCase().replace(/[$,\s]/g,'');
+    var m=s.match(/^(\d*\.?\d+)([KMBT]?)$/); if(!m) return NaN;
+    return parseFloat(m[1])*{'':1,K:1e3,M:1e6,B:1e9,T:1e12}[m[2]];
+  }
+  function uid(){ return 'b'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+  function timeLeft(ms){
+    if(ms<=0) return 'Ended';
+    var d=Math.floor(ms/864e5), h=Math.floor(ms%864e5/36e5), m=Math.floor(ms%36e5/6e4);
+    return d>0 ? d+'d '+h+'h left' : (h>0 ? h+'h '+m+'m left' : m+'m left');
+  }
+  function nameOf(id){ if(!id) return ''; if(id===S.me) return 'You'; return S.names[id] || ('Player '+String(id).slice(0,4)); }
+  function initials(id){
+    if(id===S.me) return 'You';
+    var n=S.names[id]; if(!n) return String(id).slice(0,2).toUpperCase();
+    if(/^[1-9A-HJ-NP-Za-km-z]{2}/.test(n) && n.indexOf('…')>0) return n.slice(0,2);
+    var p=n.trim().split(/\s+/); return ((p[0]||'')[0]+((p[1]||'')[0]||'')).toUpperCase();
+  }
+  function valid(b){
+    return b && typeof b.ca==='string' && CA_RE.test(b.ca) && (!b.ticker || TICK_RE.test(b.ticker)) &&
+      (b.dir==='above'||b.dir==='below') && isFinite(b.target) && b.target>0 &&
+      isFinite(b.stake) && b.stake>0 && isFinite(b.days) && b.days>0 && typeof b.creator==='string' &&
+      ['open','matched','settled'].indexOf(b.status)>-1;
+  }
+  function toast(msg){
+    var t=document.createElement('div'); t.className='toast'; t.setAttribute('role','status'); t.textContent=msg;
+    var r=$('toastRoot'); r.innerHTML=''; r.appendChild(t);
+    clearTimeout(toast._t); toast._t=setTimeout(function(){ if(t.parentNode) t.parentNode.removeChild(t); },3400);
+  }
+
+  // ── balances ──
+  function ledger(){
+    var P={};
+    function p(id){ if(!P[id]) P[id]={id:id,net:0,locked:0,won:0,lost:0}; return P[id]; }
+    S.bets.forEach(function(b){
+      if(b.status==='open'){ p(b.creator).locked+=b.stake; }
+      else if(b.status==='matched'){ p(b.creator).locked+=b.stake; if(b.taker) p(b.taker).locked+=b.stake; }
+      else if(b.status==='settled' && b.taker){
+        var loser = b.winner===b.creator ? b.taker : b.creator;
+        p(b.winner).net+=b.stake; p(b.winner).won++; p(loser).net-=b.stake; p(loser).lost++;
+      }
+    });
+    return P;
+  }
+  function available(id){ var L=ledger()[id]; return L ? START+L.net-L.locked : START; }
+
+  // ── icons ──
+  var IC = {
+    flame:'<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="var(--flame)" d="M12.6 2.2c.3 3-1.4 4.6-2.8 6C8.3 9.8 7 11.2 7 13.9 7 17.3 9.2 20 12.3 20c3.2 0 5.7-2.4 5.7-6.1 0-2.3-1-4.1-2.1-5.4-.2 1.4-.9 2.5-2 3 .4-3.3-.3-6.6-1.3-9.3Z"/></svg>',
+    user:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 20c.8-3.6 3.9-5.5 7.5-5.5s6.7 1.9 7.5 5.5"/></svg>',
+    check:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.2l2.4 2.4 4.6-4.9"/></svg>',
+    clock:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" style="color:var(--text2)"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    ext:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg>'
+  };
+  function arrow(dir){
+    var up=dir==='above';
+    return '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--'+(up?'green':'red')+')" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="'+(up?'M5.5 15.5l6.5-6.5 6.5 6.5':'M5.5 8.5l6.5 6.5 6.5-6.5')+'"/></svg>';
+  }
+
+  // ── render ──
+  function rowsFor(tab){
+    return S.bets.filter(function(b){
+      if(S.coin && b.ca!==S.coin) return false;
+      if(tab==='open') return b.status==='open';
+      if(tab==='mine') return b.status!=='settled' && (b.creator===S.me || b.taker===S.me);
+      return b.status==='settled';
+    }).sort(function(a,b){ return tab==='settled' ? (b.settledAt||0)-(a.settledAt||0) : (b.createdAt||0)-(a.createdAt||0); });
+  }
+  function renderTabs(){
+    var defs=[['open','Open',IC.flame],['mine','My Bets',IC.user],['settled','Settled',IC.check]];
+    $('tabs').innerHTML = defs.map(function(d){
+      var n=rowsFor(d[0]).length;
+      return '<button class="tab" role="tab" data-tab="'+d[0]+'" aria-selected="'+(S.tab===d[0])+'">'+d[2]+'<span>'+d[1]+'</span>'+(n?'<span class="count">'+n+'</span>':'')+'</button>';
+    }).join('');
+  }
+  function renderFilter(){
+    var seen={}, opts=['<option value="">All Coins</option>'];
+    S.bets.forEach(function(b){ if(!seen[b.ca]){ seen[b.ca]=1; opts.push('<option value="'+esc(b.ca)+'">'+esc(label(b))+'</option>'); } });
+    if(S.coin && !seen[S.coin]) S.coin='';
+    var sel=$('coinFilter'); sel.innerHTML=opts.join(''); sel.value=S.coin;
+  }
+  function renderList(){
+    var rows=rowsFor(S.tab), now=Date.now();
+    if(S.mode==='loading'){ $('list').innerHTML='<div class="empty">Loading bets…</div>'; return; }
+    if(!rows.length){
+      var msg = S.tab==='open' ? ['No open bets right now','Be the first — paste a coin’s CA below and set a target.']
+              : S.tab==='mine' ? ['You have no active bets','Take an open bet or create your own.']
+              : ['Nothing settled yet','Finished bets and their winners show up here.'];
+      $('list').innerHTML='<div class="empty"><b>'+msg[0]+'</b>'+msg[1]+'</div>'; return;
+    }
+    $('list').innerHTML = rows.map(function(b){
+      var mineC=b.creator===S.me, mineT=b.taker===S.me;
+      var when = b.status==='open' ? b.days+(b.days===1?' day':' days')
+               : b.status==='matched' ? timeLeft(b.expiresAt-now) : 'Final '+fmtCap(b.finalMc);
+      var who;
+      if(b.status==='open'){
+        who = '<div class="ava" aria-hidden="true">'+esc(initials(b.creator))+'</div><div class="stack"><span class="t">'+fmtSol(b.stake)+'</span><span class="s">'+esc(nameOf(b.creator))+'</span></div>';
+      } else {
+        who = '<div class="ava" aria-hidden="true">'+esc(initials(b.taker))+'</div><div class="stack"><span class="t">'+fmtSol(b.stake)+'</span><span class="s">'+esc(nameOf(b.creator))+' vs '+esc(nameOf(b.taker))+'</span></div>';
+      }
+      var act='';
+      if(b.status==='open'){
+        if(mineC) act='<button class="wbtn ghost" data-act="cancel" data-id="'+esc(b.id)+'">Cancel</button>';
+        else act='<button class="wbtn" data-act="take" data-id="'+esc(b.id)+'"'+(S.busy[b.id]?' disabled':'')+'>Take Bet</button>';
+      } else if(b.status==='matched'){
+        var ended=b.expiresAt<=now;
+        if(S.owner) act='<button class="wbtn'+(ended?'':' ghost')+'" data-act="resolve" data-id="'+esc(b.id)+'">Resolve</button>';
+        else act='<span class="pill wait">'+(ended?'Awaiting result':(mineC||mineT?'Live':'Matched'))+'</span>';
+      } else {
+        if(mineC||mineT) act = b.winner===S.me ? '<span class="pill win">Won +'+fmtSol(b.stake)+'</span>' : '<span class="pill lose">Lost</span>';
+        else act='<span class="pill win">'+esc(nameOf(b.winner))+' won</span>';
+      }
+      var side = b.dir==='above' ? 'Market cap' : 'Market cap';
+      return '<article class="row" aria-label="'+esc(label(b)+(b.dir==='above'?' above ':' below ')+fmtCap(b.target)+' market cap')+'">'+
+        '<div class="cell">'+coinAva(b.ca, badge(b))+'<div class="stack"><span class="t">'+esc(label(b))+'</span><span class="s ca"><button type="button" class="cabtn" data-copy="'+esc(b.ca)+'" aria-label="Copy contract address">'+esc(shortCa(b.ca))+'</button><a href="https://dexscreener.com/solana/'+esc(b.ca)+'" target="_blank" rel="noopener noreferrer" aria-label="Open chart on DexScreener">'+IC.ext+'</a></span></div></div>'+
+        '<div class="cell" style="gap:14px">'+arrow(b.dir)+'<div class="stack" style="gap:2px"><span class="t big">'+fmtCap(b.target)+'</span><span class="s sm">'+(b.dir==='above'?'Higher':'Lower')+(isFinite(b.startMc)&&b.startMc>0?' · from '+fmtCap(b.startMc):' market cap')+'</span></div></div>'+
+        '<div class="cell time" style="gap:16px">'+IC.clock+'<span class="days">'+esc(when)+'</span></div>'+
+        '<div class="vs" aria-hidden="true"><i></i><span>VS</span><i></i></div>'+
+        '<div class="cell who">'+who+'</div>'+
+        '<div class="act">'+act+'</div>'+
+      '</article>';
+    }).join('');
+  }
+  function renderLeader(){
+    var L=ledger(), ids=Object.keys(L).filter(function(id){ var p=L[id]; return p.won+p.lost>0 || p.locked>0; });
+    ids.sort(function(a,b){ return L[b].net-L[a].net || L[b].won-L[a].won; });
+    var head='<div class="lr"><span>#</span><span>Player</span><span>Record</span><span class="hide-s">In play</span><span class="hide-s" style="text-align:right">P/L</span></div>';
+    if(!ids.length){ $('lb').innerHTML=head+'<div class="lr" style="grid-template-columns:1fr"><span style="color:var(--muted)">No bets yet. The board fills up as bets are placed and resolved.</span></div>'; return; }
+    $('lb').innerHTML = head + ids.map(function(id,i){
+      var p=L[id], cls=p.net>0?'pos':(p.net<0?'neg':'');
+      return '<div class="lr"><span class="rank">'+(i+1)+'</span><span style="display:flex;align-items:center;gap:12px;min-width:0"><span class="ava" aria-hidden="true">'+esc(initials(id))+'</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+esc(nameOf(id))+'</span></span>'+
+        '<span>'+p.won+'W · '+p.lost+'L</span><span class="hide-s">'+fmtSol(p.locked)+'</span><span class="hide-s '+cls+'" style="text-align:right;font-weight:600">'+(p.net>0?'+':'')+fmtSol(p.net)+'</span></div>';
+    }).join('');
+  }
+  function renderTop(){
+    var bal = S.me ? '<b>'+fmtSol(available(S.me))+'</b> demo' : '';
+    $('balpill').innerHTML=bal; $('balpill2').innerHTML = S.me ? 'Balance <b>'+fmtSol(available(S.me))+'</b>' : '';
+    $('walletLbl').textContent = S.me ? (S.wallet ? shortCa(S.wallet) : 'Connected') : 'Connect Wallet';
+    $('heroCta').textContent = S.me ? 'Create a bet' : 'Connect Wallet';
+    var b=$('banner');
+    b.hidden=true;
+  }
+  function render(){
+    document.querySelectorAll('.links button').forEach(function(btn){
+      var g=btn.dataset.go, cur = S.view==='leader' ? g==='leader' : (S.tab==='mine' ? g==='mine' : g==='bet');
+      if(cur) btn.setAttribute('aria-current','page'); else btn.removeAttribute('aria-current');
+    });
+    $('betView').hidden = S.view!=='bet';
+    $('leaderView').hidden = S.view!=='leader';
+    renderTop(); renderFilter(); renderTabs(); renderList(); renderLeader(); if($('wizBody').dataset.step===String(W.step)) wizMeta(); else renderWizard(false);
+  }
+
+  // ── modal ──
+  function closeModal(){ $('modalRoot').innerHTML=''; }
+  function openModal(html, onReady){
+    $('modalRoot').innerHTML='<div class="scrim" data-close="1"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">'+html+'</div></div>';
+    if(onReady) onReady();
+    var first=$('modalRoot').querySelector('input,.wbtn:not(.ghost)'); if(first) first.focus();
+  }
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape' && $('modalRoot').innerHTML) closeModal(); });
+
+  // ── data (Supabase) ──
+  var SB_URL='https://bryjuhrovcgeurtlysmt.supabase.co', SB_KEY='sb_publishable_l7GtFtA3m5e3f4ITD_jQ9w_I4ps3dC5';
+  var sb = (window.supabase && window.supabase.createClient) ? window.supabase.createClient(SB_URL, SB_KEY) : null;
+  function rpc(name,args){ return sb.rpc(name,args||{}).then(function(r){ if(r.error) throw r.error; return r.data; }); }
+  function ms(v){ return v ? Date.parse(v) : null; }
+  function toBet(r){
+    return { id:r.id, ca:r.ca, ticker:r.ticker||'', dir:r.dir, target:+r.target, startMc:r.start_mc!=null?+r.start_mc:null,
+      stake:+r.stake, days:+r.days, creator:r.creator, taker:r.taker, status:r.status, winner:r.winner,
+      finalMc:r.final_mc!=null?+r.final_mc:null, createdAt:ms(r.created_at), takenAt:ms(r.taken_at), expiresAt:ms(r.expires_at), settledAt:ms(r.settled_at) };
+  }
+  function find(id){ for(var i=0;i<S.bets.length;i++) if(S.bets[i].id===id) return S.bets[i]; return null; }
+  function onWriteError(e){
+    var m=String((e&&e.message)||'');
+    if(/not signed in|JWT|auth/i.test(m)){ toast('Connect your wallet first.'); }
+    else if(/insufficient balance/.test(m)) toast('Not enough balance for that stake.');
+    else if(/no longer open/.test(m)) toast('Someone beat you to it.');
+    else if(/own bet/.test(m)) toast('You can’t take your own bet.');
+    else if(/target must be/.test(m)) toast('That target doesn’t match your Higher/Lower call.');
+    else if(/admins only/.test(m)) toast('Only admins can do that.');
+    else toast('That didn’t go through. Try again.');
+  }
+  var loadT=null;
+  function loadBets(){
+    if(!sb) return;
+    sb.from('bets').select('*').order('created_at',{ascending:false}).limit(500).then(function(r){
+      if(r.error){ toast('Couldn’t load bets. Reload to retry.'); return; }
+      S.bets=(r.data||[]).map(toBet).filter(valid);
+      if(S.mode==='loading') S.mode='live';
+      render(); loadNames();
+    });
+  }
+  function queueLoad(){ clearTimeout(loadT); loadT=setTimeout(loadBets,250); }
+  function loadNames(){
+    var ids={}; S.bets.forEach(function(b){ [b.creator,b.taker,b.winner].forEach(function(x){ if(x && !S.names[x]) ids[x]=1; }); });
+    var list=Object.keys(ids); if(!list.length) return;
+    sb.from('profiles').select('id,wallet').in('id',list).then(function(r){
+      (r.data||[]).forEach(function(p){ S.names[p.id]= p.wallet ? shortCa(p.wallet) : ''; }); render();
+    });
+  }
+  function loadTrending(){
+    if(!sb) return;
+    sb.from('trending').select('*').order('position').then(function(r){
+      if(r.error || !r.data || !r.data.length) return;
+      var items=r.data.filter(function(c){ return CA_RE.test(c.ca) && TICK_RE.test(c.ticker); }).map(function(c){
+        var lg=safeLogo(c.logo); if(lg) LOGOS[c.ca]=lg;
+        return {ca:c.ca, ticker:c.ticker, name:c.name||c.ticker, mc:c.mc!=null?+c.mc:null};
+      });
+      var d=r.data[0].as_of ? new Date(r.data[0].as_of+'T00:00:00') : null;
+      TREND={asOf: d ? d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()] : '', items:items};
+      if(W.step===1) renderWizard(false); renderList();
+    });
+  }
+
+  // ── wallet sign-in (Sign in with Solana, free, no transaction) ──
+  function walletProvider(){ return (window.phantom && window.phantom.solana) || window.solflare || (window.solana || null); }
+  function afterAuth(session){
+    if(!session){ S.me=null; S.wallet=null; S.owner=false; render(); return; }
+    S.me=session.user.id;
+    rpc('ensure_profile').then(function(p){ S.wallet=p&&p.wallet||null; if(S.wallet) S.names[S.me]=shortCa(S.wallet); render(); }).catch(function(){});
+    sb.from('admins').select('user_id').eq('user_id',S.me).maybeSingle().then(function(r){ S.owner=!!(r&&r.data); render(); if(W.step===1) renderWizard(false); });
+    render();
+  }
+  function signIn(){
+    if(!sb) return toast('Can’t reach the server. Reload and try again.');
+    var prov=walletProvider();
+    if(!prov){ toast('No Solana wallet found. Install Phantom, or open i-bet.fun in the Phantom app.'); window.open('https://phantom.com/download','_blank','noopener'); return; }
+    Promise.resolve((typeof prov.signIn==='function' || prov.publicKey) ? null : prov.connect()).then(function(){
+      return sb.auth.signInWithWeb3({ chain:'solana', statement:'Sign in to ibet. Free — this sends no transaction.', wallet:prov });
+    }).then(function(r){
+      if(r.error) throw r.error;
+      toast('Wallet connected. You start with '+START+' demo SOL.');
+    }).catch(function(e){ toast(/reject|cancel|denied/i.test(String(e&&e.message))?'Sign-in cancelled.':'Couldn’t sign in with that wallet. Try again.'); });
+  }
+  function accountMenu(){
+    openModal('<h3 id="mTitle">Your wallet</h3><p style="word-break:break-all">'+esc(S.wallet||'')+'</p>'+
+      '<div class="summary"><div><span>Balance</span><span>'+fmtSol(available(S.me))+'</span></div><div><span>Note</span><span>Demo SOL, not real funds</span></div></div>'+
+      '<div class="mact"><button class="wbtn ghost" id="signOut">Disconnect</button><button class="wbtn" data-close="1">Close</button></div>',
+      function(){ $('signOut').onclick=function(){ closeModal(); sb.auth.signOut().then(function(){ toast('Disconnected.'); }); }; });
+  }
+  function connectWallet(src){
+    if(!S.me) return signIn();
+    if(src==='nav') return accountMenu();
+    S.view='bet'; render(); $('createForm').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(function(){ var f=$('wizBody').querySelector('input'); if(f) f.focus(); },450);
+  }
+
+  // ── create wizard ──
+  // Trending pump.fun coins (snapshot from GeckoTerminal's pump.fun category). The owner can update this list on the page.
+  var TRENDING_DEFAULT = { asOf:'22 Sep', items:[
+    {ca:'GTBxUiw6wJdmmkCGZgRHLyYxqu1vG4KtRpeox6yDpump', ticker:'JEANPHIL',  name:'Jean Phil', mc:1.67e6},
+    {ca:'A13oRB9FFaiUjfi6LdCg6p9ka1u8SfGkUFs4SKvPpump', ticker:'TOAD',      name:'The Toad Pepe', mc:1.83e6},
+    {ca:'98kfF7rmsg1QDUEoCqNE7g7M1FdrTt92TEp2CLzypump', ticker:'PAID',      name:'Paid', mc:12.47e6},
+    {ca:'CbyTNf7UPzvewHh4Zp6umogM2RWahhmGRJWLJnPwpump', ticker:'BIKETYSON', name:'Bike Tyson', mc:1.31e6}
+  ]};
+  var TREND = TRENDING_DEFAULT;
+  function trendValid(t){
+    if(!t || !Array.isArray(t.items)) return null;
+    var items=t.items.filter(function(c){ return c && CA_RE.test(c.ca) && TICK_RE.test(c.ticker||'') && typeof (c.name||'')==='string'; }).slice(0,15)
+      .map(function(c){ return {ca:c.ca, ticker:String(c.ticker).toUpperCase(), name:String(c.name||'').slice(0,40), mc:isFinite(c.mc)&&c.mc>0?+c.mc:null}; });
+    return items.length ? {asOf:String(t.asOf||'').slice(0,20), items:items} : null;
+  }
+  function findTrend(ca){ return TREND.items.filter(function(c){ return c.ca===ca; })[0]; }
+  var W = {step:1, ca:'', ticker:'', cur:'', dir:null, mult:null, target:'', days:7, stake:''};
+  var ARROW_R = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+  var ARROW_L = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>';
+  function wCoin(){ return {ca:W.ca, ticker:W.ticker}; }
+  function wTarget(){ return parseCap(W.target); }
+  function wStake(){ return parseFloat(String(W.stake).replace(/sol/i,'')); }
+  function canPlay(){ return !!S.me && S.mode!=='readonly' && S.mode!=='loading'; }
+  function step1ok(){ return CA_RE.test(W.ca.trim()); }
+  function wCur(){ return parseCap(W.cur); }
+  function capStr(n){ return fmtCap(n).slice(1); }
+  function pctStr(t,c){ var p=(t/c-1)*100; return (p>0?'+':'')+(Math.abs(p)>=100?Math.round(p):+p.toFixed(1))+'%'; }
+  function hasCur(){ var c=wCur(); return isFinite(c)&&c>0; }
+  function dirOk(){ if(!hasCur()) return true; var t=wTarget(), c=wCur(); return W.dir==='above' ? t>c : t<c; }
+  function step2ok(){ var t=wTarget(), st=wStake(); return !!W.dir && isFinite(t)&&t>0 && dirOk() && isFinite(st)&&st>0 && (!W.ticker||TICK_RE.test(W.ticker)); }
+  var MULTS = { above:[[1.5,'+50%'],[2,'2x'],[3,'3x'],[5,'5x'],[10,'10x']], below:[[0.75,'−25%'],[0.5,'−50%'],[0.25,'−75%'],[0.1,'−90%']] };
+
+  function renderStepper(){
+    var steps=['Coin','Bet','Confirm'];
+    $('stepper').innerHTML = steps.map(function(l,i){
+      var n=i+1, cls = n<W.step?'done':(n===W.step?'cur':''), reach = n<W.step;
+      var dot = n<W.step ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' : n;
+      return '<li class="'+cls+'"'+(n===W.step?' aria-current="step"':'')+'><button type="button" data-wstep="'+n+'"'+(reach?'':' disabled')+'><span class="n">'+dot+'</span><span>'+l+'</span></button></li>';
+    }).join('');
+  }
+  function coinHead(){
+    var c=wCoin();
+    return '<div class="coinhead">'+coinAva(c.ca, badge(c))+'<span>'+(c.ticker?'<b style="color:var(--text)">$'+esc(c.ticker.toUpperCase())+'</b> · ':'')+'<span>'+esc(shortCa(c.ca))+'</span></span><a href="https://dexscreener.com/solana/'+esc(c.ca)+'" target="_blank" rel="noopener noreferrer" aria-label="Open chart on DexScreener">'+IC.ext+'</a></div>';
+  }
+  function renderWizard(focus){
+    renderStepper();
+    var h='';
+    if(W.step===1){
+      h='<div class="wiz-in"><h2 id="wTitle">Which coin?</h2><p class="sub">Paste a contract address to start.</p>'+
+        '<div class="cabox" id="caBox"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.2 1.2"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/></svg>'+
+        '<label for="wCa" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Token contract address</label>'+
+        '<input id="wCa" placeholder="Paste token contract address (CA)" autocomplete="off" spellcheck="false" value="'+esc(W.ca)+'">'+
+        '<button type="button" class="nextbtn" id="wNext1" data-wnext="2">Next '+ARROW_R+'</button></div>'+
+        '<p class="whint" id="wHint1"></p>'+
+        '<div class="orline" aria-hidden="true">or</div>'+
+        '<div class="pophead"><p class="poplbl">Trending on pump.fun'+(TREND.asOf?' <span class="asof">· market caps as of '+esc(TREND.asOf)+'</span>':'')+'</p>'+'<span style="display:flex;gap:18px">'+(S.owner?'<button type="button" class="editlink" data-wedittrend="1">Edit list</button>':'')+'</span>'+'</div><div class="pop">'+
+        TREND.items.map(function(c,i){ return '<button type="button" class="popc" data-pop="'+i+'" title="'+esc(c.name)+'">'+coinAva(c.ca, c.ticker.slice(0,4))+'<div style="min-width:0"><b>'+esc(c.ticker)+'</b><span>'+(c.mc?fmtCap(c.mc):esc(c.name))+'</span></div></button>'; }).join('')+
+        '</div></div>';
+    } else if(W.step===2){
+      var kt = findTrend(W.ca), known=!!kt, hi=W.dir==='above';
+      h='<div class="wiz-in" style="max-width:860px"><h2 id="wTitle">What’s your call?</h2>'+coinHead()+
+        '<div class="mcapcard"><span class="mclbl">Current mcap</span>'+
+          '<div class="mcval">'+(hasCur()?fmtCap(wCur()):'—')+'</div>'+
+          '<span class="mcnote">'+(hasCur()?(TREND.asOf?'As of '+esc(TREND.asOf)+' · ':''):'Not available for this coin · ')+'<a href="https://dexscreener.com/solana/'+esc(W.ca)+'" target="_blank" rel="noopener noreferrer">live chart</a></span></div>'+
+        '<p class="callq">Where’s it going?</p>'+
+        '<div class="callseg" role="group" aria-label="Your call">'+
+          '<button type="button" class="up" data-wdir="above" aria-pressed="'+(W.dir==='above')+'"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg><span>Higher</span></button>'+
+          '<button type="button" class="down" data-wdir="below" aria-pressed="'+(W.dir==='below')+'"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg><span>Lower</span></button>'+
+        '</div>'+
+        (W.dir ? '<div class="details">'+
+          '<div class="bx" style="grid-column:1/-1"><span class="lbl">How much '+(hi?'higher':'lower')+'?</span>'+
+            (hasCur()?'<div class="chips" role="group" aria-label="How much">'+MULTS[W.dir].map(function(m){ return '<button type="button" data-wmult="'+m[0]+'" aria-pressed="'+(W.mult===m[0])+'">'+m[1]+'</button>'; }).join('')+'</div>':'')+
+            '<div class="tgtrow"><label for="wTarget" class="lbl">Target market cap</label><div class="bigin"><span>$</span><input id="wTarget" inputmode="decimal" placeholder="'+(hi?'e.g. 5M':'e.g. 500K')+'" autocomplete="off" value="'+esc(W.target)+'"></div><span class="tgtpct" id="wPct"></span></div></div>'+
+          '<div class="bx"><span class="lbl">Timeframe</span><div class="chips" role="group" aria-label="Timeframe">'+
+            [1,3,5,7,14,30].map(function(d){ return '<button type="button" data-wdays="'+d+'" aria-pressed="'+(W.days===d)+'">'+d+(d===1?' day':' days')+'</button>'; }).join('')+'</div></div>'+
+          '<div class="bx"><label for="wStake">Your stake</label><div class="bigin"><input id="wStake" inputmode="decimal" placeholder="0.0" autocomplete="off" value="'+esc(W.stake)+'"><span class="u">SOL</span></div>'+
+            '<div class="chips" role="group" aria-label="Quick stake">'+[0.1,0.25,0.5,1,2].map(function(v){ return '<button type="button" data-wstake="'+v+'" aria-pressed="'+(wStake()===v)+'">'+v+'</button>'; }).join('')+'</div></div>'+
+          (known?'':'<div class="bx" style="grid-column:1/-1"><label for="wTick">Ticker (optional — shows instead of the CA)</label><input id="wTick" class="tkin" maxlength="11" placeholder="e.g. WIF" autocomplete="off" spellcheck="false" value="'+esc(W.ticker)+'"></div>')+
+          '<div class="betline" id="wLine" style="grid-column:1/-1"></div>'+
+        '</div>' : '')+
+        '<p class="whint" id="wHint2"></p>'+
+        '<div class="wnav"><button type="button" class="wbtn ghost" data-wstep="1">'+ARROW_L+' Back</button><button type="button" class="nextbtn" id="wNext2" data-wnext="3">Next '+ARROW_R+'</button></div></div>';
+    } else {
+      var c=wCoin(), t=wTarget(), st=wStake();
+      var name = c.ticker ? '$'+c.ticker.toUpperCase() : shortCa(c.ca);
+      h='<div class="wiz-in"><h2 id="wTitle">Lock it in.</h2><p class="sub">Your bet goes live for anyone to take.</p>'+
+        '<div class="recap">'+
+          '<div><span>Coin</span><span>'+esc(name)+' <span style="color:var(--muted);font-weight:400">· '+esc(shortCa(c.ca))+'</span></span></div>'+
+          (hasCur()?'<div><span>Current mcap</span><span>'+fmtCap(wCur())+'</span></div>':'')+
+          '<div><span>Your call</span><span style="color:var(--'+(W.dir==='above'?'green':'red')+')">'+(W.dir==='above'?'Higher than ':'Lower than ')+fmtCap(t)+(hasCur()?' <span style="font-weight:400">('+pctStr(t,wCur())+')</span>':'')+'</span></div>'+
+          '<div><span>Timeframe</span><span>'+W.days+(W.days===1?' day':' days')+' <span style="color:var(--muted);font-weight:400">from when it’s taken</span></span></div>'+
+          '<div><span>Your stake</span><span>'+fmtSol(st)+'</span></div>'+
+          '<div class="hl"><span>Winner takes</span><span>'+fmtSol(st*2)+'</span></div>'+
+        '</div>'+
+        '<p class="whint" id="wHint3"></p>'+
+        '<div class="wnav narrow"><button type="button" class="wbtn ghost" data-wstep="2">'+ARROW_L+' Back</button><button type="button" class="nextbtn" id="wCreate" data-wcreate="1">Create Bet '+ARROW_R+'</button></div></div>';
+    }
+    $('wizBody').innerHTML=h; $('wizBody').dataset.step=String(W.step);
+    wizMeta();
+    if(focus){ var f=$('wizBody').querySelector('input'); if(f) f.focus(); }
+  }
+  function wizMeta(){
+    if(W.step===1){
+      var ca=W.ca.trim(), ok=step1ok();
+      $('caBox').classList.toggle('bad', !!ca && !ok);
+      $('wNext1').classList.toggle('ready', ok); $('wNext1').disabled=!ok;
+      $('wHint1').textContent = ca && !ok ? 'That doesn’t look like a Solana contract address (32–44 base58 characters).' : '';
+    } else if(W.step===2){
+      var ok2=step2ok();
+      $('wNext2').classList.toggle('ready', ok2); $('wNext2').disabled=!ok2;
+      var st=wStake(), msg='', c=wCur(), t=wTarget();
+      if($('wPct')) $('wPct').textContent = (isFinite(c)&&c>0&&isFinite(t)&&t>0) ? pctStr(t,c)+' from now' : '';
+      if($('wLine')){
+        $('wLine').innerHTML = (isFinite(t)&&t>0&&isFinite(st)&&st>0&&dirOk())
+          ? 'You win <b>'+fmtSol(st*2)+'</b> if it’s <b style="color:var(--'+(W.dir==='above'?'green':'red')+')">'+(W.dir==='above'?'above ':'below ')+fmtCap(t)+'</b> when '+W.days+(W.days===1?' day':' days')+' are up.'
+          : '';
+      }
+      document.querySelectorAll('[data-wmult]').forEach(function(b){ b.setAttribute('aria-pressed', String(+b.dataset.wmult===W.mult)); });
+      if(W.dir && isFinite(t)&&t>0 && !dirOk()) msg = W.dir==='above' ? 'For “Higher”, the target has to be above '+fmtCap(c)+'.' : 'For “Lower”, the target has to be below '+fmtCap(c)+'.';
+      else if(W.ticker && !TICK_RE.test(W.ticker)) msg='Ticker: letters and numbers only, max 10.';
+      else if(isFinite(st) && st>0 && S.me && st>available(S.me)+1e-9) msg='Heads up: you only have '+fmtSol(available(S.me))+' free.';
+      $('wHint2').textContent=msg;
+      document.querySelectorAll('[data-wstake]').forEach(function(b){ b.setAttribute('aria-pressed', String(+b.dataset.wstake===st)); });
+    } else {
+      var ok3 = step1ok() && step2ok() && (!S.me || wStake()<=available(S.me)+1e-9);
+      $('wCreate').classList.toggle('ready', ok3); $('wCreate').disabled=!ok3;
+      $('wCreate').innerHTML = S.me ? 'Create Bet '+ARROW_R : 'Connect Wallet '+ARROW_R;
+      $('wHint3').textContent = !S.me ? 'Connect your wallet to create this bet. It’s free and sends no transaction.'
+        : (wStake()>available(S.me)+1e-9 ? 'Not enough balance — you have '+fmtSol(available(S.me))+' free.' : 'The taker matches your stake. The clock starts when someone takes it.');
+    }
+  }
+  function goStep(n){ W.step=n; renderWizard(true); }
+  $('createForm').addEventListener('input',function(e){
+    var id=e.target.id;
+    if(id==='wCa') W.ca=e.target.value;
+    else if(id==='wTarget'){ W.target=e.target.value; W.mult=null; }
+    else if(id==='wStake') W.stake=e.target.value;
+    else if(id==='wTick') W.ticker=e.target.value.trim().replace(/^\$/,'');
+    else return;
+    wizMeta();
+  });
+  $('createForm').addEventListener('keydown',function(e){
+    if(e.key!=='Enter' || e.target.tagName!=='INPUT') return;
+    e.preventDefault();
+    if(W.step===1 && step1ok()) goStep(2); else if(W.step===2 && step2ok()) goStep(3);
+  });
+  $('createForm').addEventListener('click',function(e){
+    var t=e.target.closest('[data-wedittrend],[data-pop],[data-wnext],[data-wstep],[data-wdir],[data-wmult],[data-wdays],[data-wstake],[data-wcreate]');
+    if(!t || t.disabled) return;
+    if(t.dataset.wedittrend){ editTrending(); return; }
+    if(t.dataset.pop!==undefined){ var c=TREND.items[+t.dataset.pop]; if(!c) return; pickCoin(c.ca); goStep(2); return; }
+    if(t.dataset.wnext){ var n=+t.dataset.wnext; if(n===2) pickCoin(W.ca.trim()); goStep(n); return; }
+    if(t.dataset.wstep){ goStep(+t.dataset.wstep); return; }
+    if(t.dataset.wdir){
+      if(W.dir!==t.dataset.wdir){ W.dir=t.dataset.wdir; W.mult=null; W.target=''; }
+      renderWizard(false);
+      var d=document.querySelector('.details'); if(d && d.scrollIntoView) d.scrollIntoView({behavior:'smooth',block:'nearest'});
+      return;
+    }
+    if(t.dataset.wmult){
+      var c2=wCur(); if(!hasCur()) return;
+      W.mult=+t.dataset.wmult; W.target=capStr(c2*W.mult); $('wTarget').value=W.target; wizMeta(); return;
+    }
+    if(t.dataset.wdays){ W.days=+t.dataset.wdays; document.querySelectorAll('[data-wdays]').forEach(function(b){ b.setAttribute('aria-pressed', String(b===t)); }); return; }
+    if(t.dataset.wstake){ W.stake=t.dataset.wstake; $('wStake').value=W.stake; wizMeta(); return; }
+    if(t.dataset.wcreate){ createBet(); }
+  });
+  function editTrending(){
+    if(!S.owner) return;
+    var txt = TREND.items.map(function(c){ return c.ticker+' '+c.ca+(c.mc?' '+fmtCap(c.mc).replace('$',''):''); }).join('\n');
+    openModal('<h3 id="mTitle">Trending list</h3><p>One coin per line: <b>TICKER CA market-cap</b> (market cap optional, e.g. 1.2M). Up to 15.</p>'+
+      '<textarea id="trendTxt" rows="10" spellcheck="false" style="width:100%;border-radius:12px;border:1px solid var(--field-line);background:var(--bg);color:var(--text);padding:12px 14px;font:13px/1.6 ui-monospace,Menlo,monospace;resize:vertical"></textarea>'+
+      '<p id="trendErr" style="min-height:20px;margin:10px 0 16px;color:var(--red);font-size:14px"></p>'+
+      '<div class="mact"><button class="wbtn ghost" data-close="1">Cancel</button><button class="wbtn" id="trendSave">Save</button></div>',
+      function(){
+        $('trendTxt').value=txt;
+        $('trendSave').onclick=function(){
+          var items=[], bad=[];
+          $('trendTxt').value.split('\n').forEach(function(line,i){
+            var p=line.trim().split(/\s+/); if(!p[0]) return;
+            var tk=p[0].replace(/^\$/,''), ca=p[1], mc=p[2]?parseCap(p[2]):null;
+            if(!TICK_RE.test(tk)||!CA_RE.test(ca||'')) bad.push(i+1); else items.push({ca:ca,ticker:tk.toUpperCase(),name:tk.toUpperCase(),mc:isFinite(mc)?mc:null});
+          });
+          if(bad.length){ $('trendErr').textContent='Check line '+bad.join(', ')+'.'; return; }
+          if(!items.length){ $('trendErr').textContent='Add at least one coin.'; return; }
+          var d=new Date(), next={asOf:d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()], items:items.slice(0,15)};
+          closeModal();
+          rpc('set_trending',{p_items:next.items}).then(function(){ loadTrending(); toast('Trending list updated.'); }, onWriteError);
+        };
+      });
+  }
+  function pickCoin(ca){
+    if(W._lastCa===ca){ W.ca=ca; return; }
+    var k=findTrend(ca);
+    W.ca=ca; W._lastCa=ca; W.ticker=k?k.ticker:''; W.cur=(k&&k.mc)?capStr(k.mc):'';
+    W.dir=null; W.mult=null; W.target='';
+  }
+  function createBet(){
+    if(!S.me) return signIn();
+    var t=wTarget(), st=wStake();
+    if(!step1ok()||!step2ok()) return;
+    if(st>available(S.me)+1e-9) return toast('Not enough balance — you have '+fmtSol(available(S.me))+' free.');
+    $('wCreate').disabled=true;
+    rpc('create_bet',{p_ca:W.ca.trim(), p_ticker:W.ticker?W.ticker.toUpperCase():'', p_dir:W.dir, p_target:t, p_start_mc:hasCur()?wCur():null, p_days:W.days, p_stake:Math.round(st*1000)/1000}).then(function(){
+      loadBets();
+      W={step:1, ca:'', ticker:'', cur:'', dir:null, mult:null, target:'', days:7, stake:''};
+      S.tab='open'; S.coin=''; render(); renderWizard(false);
+      toast('Bet created. Waiting for a taker.');
+      $('tabs').scrollIntoView({behavior:'smooth',block:'start'});
+    }, function(e){ onWriteError(e); wizMeta(); });
+  }
+
+  // ── take ──
+  function askTake(id){
+    var b=find(id); if(!b) return;
+    if(!S.me) return signIn();
+    if(b.stake>available(S.me)+1e-9) return toast('Not enough balance — you have '+fmtSol(available(S.me))+' free.');
+    var opp = b.dir==='above' ? 'doesn’t get above' : 'doesn’t drop below';
+    openModal('<h3 id="mTitle">Take this bet?</h3><p>You win if <b>'+esc(label(b))+'</b> <span style="font-size:13px">('+esc(shortCa(b.ca))+')</span> '+opp+' <b>'+fmtCap(b.target)+'</b> market cap for '+b.days+(b.days===1?' day':' days')+'.</p>'+
+      '<div class="summary"><div><span>Your stake</span><span>'+fmtSol(b.stake)+'</span></div><div><span>Pot</span><span>'+fmtSol(b.stake*2)+'</span></div><div><span>Against</span><span>'+esc(nameOf(b.creator))+'</span></div></div>'+
+      '<div class="mact"><button class="wbtn ghost" data-close="1">Not now</button><button class="wbtn" id="confirmTake">Take Bet</button></div>',
+      function(){ $('confirmTake').onclick=function(){ closeModal(); take(id); }; });
+  }
+  function take(id){
+    S.busy[id]=true; renderList();
+    rpc('take_bet',{p_id:id}).then(function(){ delete S.busy[id]; loadBets(); toast('You’re in. Clock started.'); },
+      function(e){ delete S.busy[id]; render(); onWriteError(e); });
+  }
+  function cancel(id){
+    var b=find(id); if(!b||b.creator!==S.me||b.status!=='open') return;
+    rpc('cancel_bet',{p_id:id}).then(function(){ loadBets(); toast('Bet cancelled. Stake unlocked.'); }, onWriteError);
+  }
+  function askResolve(id){
+    var b=find(id); if(!b||!S.owner) return;
+    var ended=b.expiresAt<=Date.now();
+    openModal('<h3 id="mTitle">Resolve '+esc(label(b))+'</h3><p><a href="https://dexscreener.com/solana/'+esc(b.ca)+'" target="_blank" rel="noopener noreferrer" style="word-break:break-all">'+esc(b.ca)+'</a></p><p>'+esc(nameOf(b.creator))+' bet it ends '+b.dir+' <b>'+fmtCap(b.target)+'</b>.'+(ended?'':' It hasn’t expired yet — only resolve early when testing.')+'</p>'+
+      '<div class="field"><div class="fbody"><label for="finalMc">Final market cap</label><div class="money"><span>$</span><input id="finalMc" inputmode="decimal" placeholder="e.g. 1.2B" autocomplete="off"></div></div></div>'+
+      '<p id="resPrev" style="min-height:22px;margin:0 0 18px"></p>'+
+      '<div class="mact"><button class="wbtn ghost" data-close="1">Cancel</button><button class="wbtn" id="confirmRes" disabled>Settle</button></div>',
+      function(){
+        var inp=$('finalMc');
+        inp.oninput=function(){
+          var v=parseCap(inp.value), ok=isFinite(v)&&v>0;
+          $('confirmRes').disabled=!ok;
+          if(ok){ var cw = b.dir==='above' ? v>=b.target : v<=b.target; $('resPrev').textContent=(cw?nameOf(b.creator):nameOf(b.taker))+' wins '+fmtSol(b.stake*2)+'.'; }
+          else $('resPrev').textContent='';
+        };
+        $('confirmRes').onclick=function(){
+          var v=parseCap(inp.value); if(!(v>0)) return;
+          var cw = b.dir==='above' ? v>=b.target : v<=b.target;
+          closeModal();
+          rpc('resolve_bet',{p_id:id,p_final_mc:v}).then(function(){ loadBets(); toast('Settled. '+nameOf(cw?b.creator:b.taker)+' takes the pot.'); }, onWriteError);
+        };
+      });
+  }
+
+  // ── events ──
+  document.addEventListener('click',function(e){
+    var cp=e.target.closest('[data-copy]');
+    if(cp){
+      var v=cp.getAttribute('data-copy'), ok=function(){ toast('CA copied'); };
+      var fb=function(){ var ta=document.createElement('textarea'); ta.value=v; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); ok(); }catch(_){ toast(v); } ta.remove(); };
+      try{ navigator.clipboard.writeText(v).then(ok,fb); }catch(_){ fb(); }
+      return;
+    }
+    var wb=e.target.closest('[data-wallet]'); if(wb){ connectWallet(wb.id==='walletBtn'?'nav':'hero'); return; }
+    var t=e.target.closest('[data-close],[data-go],[data-tab],[data-act]');
+    if(!t) return;
+    if(t.dataset.close){ if(t===e.target || t.tagName==='BUTTON') closeModal(); return; }
+    if(t.dataset.go){ var g=t.dataset.go; if(g==='leader') S.view='leader'; else { S.view='bet'; S.tab = g==='mine' ? 'mine' : (S.tab==='mine'?'open':S.tab); } render(); window.scrollTo({top:0,behavior:'smooth'}); return; }
+    if(t.dataset.tab){ S.tab=t.dataset.tab; render(); return; }
+    var id=t.dataset.id, a=t.dataset.act;
+    if(a==='take') askTake(id); else if(a==='cancel') cancel(id); else if(a==='resolve') askResolve(id);
+  });
+  $('coinFilter').onchange=function(){ S.coin=this.value; renderTabs(); renderList(); };
+  setInterval(function(){ if(S.bets.some(function(b){return b.status==='matched';})) renderList(); },30000);
+
+  // ── boot ──
+  render();
+  if(!sb){ S.mode='live'; render(); toast('Couldn’t load ibet. Check your connection and reload.'); }
+  else {
+    loadTrending(); loadBets();
+    sb.auth.getSession().then(function(r){ afterAuth(r.data && r.data.session); });
+    sb.auth.onAuthStateChange(function(ev, session){ if(ev==='SIGNED_IN'||ev==='SIGNED_OUT') setTimeout(function(){ afterAuth(session); },0); });
+    sb.channel('ibet-live')
+      .on('postgres_changes',{event:'*',schema:'public',table:'bets'},queueLoad)
+      .on('postgres_changes',{event:'*',schema:'public',table:'trending'},loadTrending)
+      .subscribe();
+  }
+})();
+</script>
+</body>
+</html>
