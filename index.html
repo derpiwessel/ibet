@@ -212,9 +212,6 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .whint{margin:14px 2px 0;font-size:14px;color:var(--muted);min-height:20px;text-align:center}
 @media (max-width:760px){.betgrid{grid-template-columns:1fr}}
 /* step 2 call */
-.mcapcard{max-width:560px;margin:0 auto;border:1px solid var(--row-line);border-radius:16px;padding:20px 26px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;background:var(--row)}
-.mclbl{font-size:14px;color:var(--muted)}
-.mcval{font-family:'Inter Tight','Inter',sans-serif;font-size:48px;font-weight:700;letter-spacing:-.035em;line-height:1.1}
 .bigin.big{justify-content:center;font-size:44px;font-weight:700;letter-spacing:-.03em;font-family:'Inter Tight','Inter',sans-serif}
 .bigin.big input{font-size:44px;font-weight:700;letter-spacing:-.03em;font-family:'Inter Tight','Inter',sans-serif;text-align:center;flex:0 1 auto;width:100%;max-width:380px}
 .bigin.big input::placeholder{font-size:20px;font-weight:500;letter-spacing:0;font-family:'Inter',sans-serif}
@@ -253,6 +250,7 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 @media (max-width:640px){.lb .lr{grid-template-columns:40px 1fr 100px}.lb .hide-s{display:none}}
 
 /* ── modal/toast ── */
+.modal:has(.coincard){max-width:620px}
 .scrim{position:fixed;inset:0;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
 .modal{width:100%;max-width:440px;background:var(--row);border:1px solid var(--field-line);border-radius:20px;padding:26px;box-shadow:var(--shadow)}
 .modal h3{margin:0 0 8px;font-size:24px;font-family:'Inter Tight','Inter',sans-serif;font-weight:800;letter-spacing:-.03em}
@@ -265,11 +263,51 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .mact{display:flex;gap:10px}.mact .wbtn{flex:1}
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--btn);color:var(--btn-fg);padding:12px 18px;border-radius:12px;font-size:14px;font-weight:500;z-index:60;box-shadow:var(--shadow);max-width:calc(100% - 32px)}
 .banner{margin:0 0 18px;padding:12px 16px;border-radius:12px;border:1px solid var(--row-line);background:var(--row);font-size:13px;color:var(--muted)}
-.chartbox{position:relative;width:100%;border-radius:14px;overflow:hidden;border:1px solid var(--row-line);background:var(--row)}
-.chartbox iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
-.mcnote .live{display:inline-flex;align-items:center;gap:5px}
-.mcnote .live i{width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+/* ── coin card ── */
+.coincard{border:1px solid var(--row-line);background:var(--card);border-radius:20px;overflow:hidden;margin:0 0 18px;container-type:inline-size}
+.cc-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;padding:20px 22px 6px}
+.cc-id{display:flex;align-items:center;gap:14px;min-width:0}
+.cc-logo .coin{width:52px;height:52px;font-size:13px}
+.cc-names{min-width:0;display:flex;flex-direction:column;gap:2px}
+.cc-pair{font-family:'Inter Tight','Inter',sans-serif;font-size:20px;font-weight:700;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-dex{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--muted);text-decoration:none;white-space:nowrap}
+.cc-dex:hover{color:var(--text2)}
+.cc-mcap{text-align:center;min-width:0}
+.cc-lbl{font-size:13px;color:var(--muted)}
+.cc-val{font-family:'Inter Tight','Inter',sans-serif;font-size:clamp(30px,4vw,42px);font-weight:800;letter-spacing:-.035em;line-height:1.12}
+.cc-chg{font-size:14px;font-weight:600;min-height:20px}
+.cc-chg.up{color:var(--green)}
+.cc-chg.down{color:var(--red)}
+.cc-tf{justify-self:end;display:flex;gap:2px;padding:4px;border-radius:12px;background:var(--row);border:1px solid var(--row-line)}
+.cc-tf button{border:0;background:none;color:var(--muted);font-size:13px;font-weight:500;padding:7px 11px;border-radius:9px;transition:background .12s,color .12s}
+.cc-tf button:hover{color:var(--text2)}
+.cc-tf button[aria-pressed="true"]{background:var(--field-line);color:var(--text);font-weight:600}
+.cc-plot{position:relative;width:100%;padding:0 6px}
+.cc-canvas{position:absolute;inset:0}
+.cc-state{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--muted);text-align:center;padding:0 24px}
+.cc-foot{padding:0 22px 14px;text-align:right}
+.cc-foot a{font-size:11px;color:var(--faint);text-decoration:none}
+.cc-foot a:hover{color:var(--muted)}
+@container (max-width:700px){
+  .cc-head{grid-template-columns:1fr;gap:12px;padding:18px 16px 4px}
+  .cc-mcap{text-align:left}
+  .cc-val{font-size:32px}
+  .cc-tf{justify-self:stretch;justify-content:space-between}
+  .cc-tf button{flex:1;text-align:center;padding:9px 0}
+  .cc-plot{padding:0}
+  .cc-foot{padding:0 16px 12px}
+}
+@media (max-width:760px){
+  .cc-head{grid-template-columns:1fr;gap:12px;padding:18px 16px 4px}
+  .cc-mcap{text-align:left}
+  .cc-tf{justify-self:stretch;justify-content:space-between}
+  .cc-tf button{flex:1;text-align:center;padding:9px 0}
+  .cc-plot{padding:0}
+  .cc-foot{padding:0 16px 12px}
+}
+.popc .chg{font-size:11px;font-weight:600;margin-left:6px}
+.popc .chg.up{color:var(--green)}
+.popc .chg.down{color:var(--red)}
 .nowcap{font-size:12px;color:var(--muted);white-space:nowrap}
 .nowcap b{color:var(--text2);font-weight:600}
 .coinbtn{background:none;border:0;padding:0;display:contents;cursor:pointer}
@@ -376,6 +414,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
 <div id="toastRoot"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.98.4/lib/index.iife.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.0.9/dist/lightweight-charts.standalone.production.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
@@ -662,6 +701,11 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   // when it resolves a bet, so what you see is what you are judged on. Supply
   // comes from the chain; price from DexScreener's deepest pool.
   var MCAP_TTL = 30000;
+  function prettyDex(id){
+    if(!id) return '';
+    var known = { pumpswap:'PumpSwap', raydium:'Raydium', meteora:'Meteora', orca:'Orca', pumpfun:'Pump.fun' };
+    return known[id] || (String(id).charAt(0).toUpperCase()+String(id).slice(1));
+  }
   var mcapCache = {}, supplyCache = {}, mcapWaiting = {};
 
   function tokenSupply(ca){
@@ -696,7 +740,16 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
         if(!pairs.length){ return (mcapCache[ca]={at:Date.now(), mcap:null, price:null, pool:null}); }
         pairs.sort(function(a,b){ return (b.liquidity&&b.liquidity.usd||0)-(a.liquidity&&a.liquidity.usd||0); });
         var top=pairs[0], price=parseFloat(top.priceUsd), fdv=parseFloat(top.fdv);
-        var result = { at:Date.now(), price:isFinite(price)?price:null, pool:top.pairAddress||null, mcap:null };
+        var result = {
+          at:Date.now(), price:isFinite(price)?price:null, pool:top.pairAddress||null, mcap:null,
+          pair: (top.baseToken&&top.baseToken.symbol ? top.baseToken.symbol : shortCa(ca))+
+                (top.quoteToken&&top.quoteToken.symbol ? '/'+top.quoteToken.symbol : ''),
+          dex: prettyDex(top.dexId),
+          change24: (top.priceChange && isFinite(parseFloat(top.priceChange.h24))) ? parseFloat(top.priceChange.h24) : null,
+          // fdv is price × total supply, so this recovers the supply the
+          // candles have to be multiplied by.
+          supply: (isFinite(fdv) && isFinite(price) && price>0) ? fdv/price : null
+        };
 
         if(isFinite(fdv) && fdv>0){ result.mcap = fdv; mcapCache[ca]=result; return result; }
         // No fully-diluted figure: fall back to reading the supply ourselves.
@@ -736,26 +789,343 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     queueRerender();
   }
 
-  // ── chart ────────────────────────────────────────────────────────────────
-  function chartUrl(ca){
-    return 'https://dexscreener.com/solana/'+encodeURIComponent(ca)+'?embed=1&theme=dark&trades=0&info=0';
+  // ── coin chart ───────────────────────────────────────────────────────────
+  // TradingView Lightweight Charts, plotted in market cap rather than price:
+  // every candle is multiplied by the coin's total supply, the same definition
+  // the keeper settles on.
+  var LWC = window.LightweightCharts || null;
+
+  var TIMEFRAMES = [
+    { id:'1m',  unit:'minute', agg:1  },
+    { id:'5m',  unit:'minute', agg:5  },
+    { id:'15m', unit:'minute', agg:15 },
+    { id:'1h',  unit:'hour',   agg:1  },
+    { id:'4h',  unit:'hour',   agg:4  },
+    { id:'1d',  unit:'day',    agg:1  }
+  ];
+  var TF_DEFAULT = '15m';
+  var CHART_REFRESH = 15000;
+
+  // GeckoTerminal rate-limits bursts, so requests go out one at a time with a
+  // short gap and one retry.
+  //
+  // A throttled response comes back without CORS headers, which the browser
+  // turns into a rejected fetch rather than a readable 429 — so the retry has
+  // to cover a thrown error just as much as a status code.
+  var gtChain = Promise.resolve();
+  function gtFetch(url){
+    function attempt(){
+      return fetch(url).then(function(r){
+        if(r.status === 429) throw new Error('rate limited');
+        return r;
+      });
+    }
+    var out = gtChain.then(attempt).catch(function(){
+      return new Promise(function(res){ setTimeout(res, 1800); }).then(attempt);
+    });
+    var gap = function(){ return new Promise(function(r){ setTimeout(r, 300); }); };
+    gtChain = out.then(gap, gap);
+    return out;
   }
-  function chartFrame(ca, height){
-    return '<div class="chartbox" style="height:'+(height||320)+'px">'+
-      '<iframe src="'+esc(chartUrl(ca))+'" title="Price chart" loading="lazy" referrerpolicy="no-referrer"></iframe>'+
-      '<noscript>No chart available.</noscript></div>';
+
+  var candleCache = {};   // ca|tf -> {at, bars}
+
+  // Bars in market cap, oldest first. `reason` says why there are none.
+  function loadCandles(ca, tfId, force){
+    var key = ca+'|'+tfId, hit = candleCache[key];
+    if(!force && hit && Date.now()-hit.at < CHART_REFRESH-1000) return Promise.resolve(hit);
+
+    return liveMcap(ca).then(function(info){
+      if(!info || !info.pool) return { bars:[], reason:'nopool', info:info };
+      if(!info.supply)        return { bars:[], reason:'nodata', info:info };
+      var tf = TIMEFRAMES.filter(function(t){ return t.id===tfId; })[0] || TIMEFRAMES[2];
+      var url = 'https://api.geckoterminal.com/api/v2/networks/solana/pools/'+encodeURIComponent(info.pool)+
+                '/ohlcv/'+tf.unit+'?aggregate='+tf.agg+'&limit=500&currency=usd&token=base';
+      return gtFetch(url).then(function(r){
+        if(!r.ok) throw new Error('ohlcv '+r.status);
+        return r.json();
+      }).then(function(j){
+        var list = (j && j.data && j.data.attributes && j.data.attributes.ohlcv_list) || [];
+        var bars = list.map(function(c){
+          return { time:c[0], high:c[2]*info.supply, low:c[3]*info.supply,
+                   close:c[4]*info.supply, volume:+c[5] || 0 };
+        }).sort(function(a,b){ return a.time-b.time; });
+        var out = { at:Date.now(), bars:bars, info:info, reason: bars.length ? null : 'nodata' };
+        candleCache[key] = out;
+        return out;
+      });
+    }).catch(function(){ return { bars:[], reason:'error' }; });
   }
+
+
+  function cssVar(name, fallback){
+    var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  }
+
+  /// A live coin card: identity, current mcap, timeframe switcher and chart.
+  /// opts = { ca, bet, height, onReady }
+  function coinCard(opts){
+    var ca = opts.ca, bet = opts.bet || null;
+    var height = opts.height || 300;
+    var tfId = TF_DEFAULT;
+    var chart=null, series=null, volSeries=null, baseline=null;
+    var priceLine=null, targetLine=null, markers=null;
+    var destroyed=false, timer=null, ro=null, lastBars=[];
+    var target = bet ? { value:bet.target, dir:bet.dir } : null;
+
+    var el = document.createElement('section');
+    el.className = 'coincard';
+    el.innerHTML =
+      '<div class="cc-head">'+
+        '<div class="cc-id">'+
+          '<div class="cc-logo">'+coinAva(ca, (tickerFor(ca)||shortCa(ca)).slice(0,4))+'</div>'+
+          '<div class="cc-names"><b class="cc-pair">'+esc(tickerFor(ca)||shortCa(ca))+'</b>'+
+          '<a class="cc-dex" href="https://dexscreener.com/solana/'+esc(ca)+'" target="_blank" rel="noopener noreferrer">on DexScreener '+IC.ext+'</a></div>'+
+        '</div>'+
+        '<div class="cc-mcap"><span class="cc-lbl">Current mcap</span>'+
+          '<div class="cc-val">—</div><div class="cc-chg"></div></div>'+
+        '<div class="cc-tf" role="group" aria-label="Timeframe">'+
+          TIMEFRAMES.map(function(t){
+            return '<button type="button" data-tf="'+t.id+'" aria-pressed="'+(t.id===tfId)+'">'+t.id+'</button>';
+          }).join('')+
+        '</div>'+
+      '</div>'+
+      '<div class="cc-plot" style="height:'+height+'px"><div class="cc-canvas"></div>'+
+        '<div class="cc-state">Loading chart…</div></div>'+
+      '<div class="cc-foot"><a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">TradingView Lightweight Charts™</a></div>';
+
+    var canvas = el.querySelector('.cc-canvas');
+    var stateEl = el.querySelector('.cc-state');
+    var valEl = el.querySelector('.cc-val');
+    var chgEl = el.querySelector('.cc-chg');
+    var pairEl = el.querySelector('.cc-pair');
+    var dexEl = el.querySelector('.cc-dex');
+
+    function showState(msg){
+      stateEl.textContent = msg || '';
+      stateEl.hidden = !msg;
+      canvas.style.visibility = msg ? 'hidden' : 'visible';
+    }
+
+    el.querySelector('.cc-tf').addEventListener('click', function(e){
+      var b = e.target.closest('[data-tf]');
+      if(!b || b.dataset.tf===tfId) return;
+      tfId = b.dataset.tf;
+      el.querySelectorAll('[data-tf]').forEach(function(x){ x.setAttribute('aria-pressed', String(x.dataset.tf===tfId)); });
+      showState('Loading chart…');
+      draw(true, true);
+    });
+
+    function ensureChart(){
+      if(chart || !LWC) return chart;
+      var green = cssVar('--green','#4ADE80'), red = cssVar('--red','#F2545B');
+      chart = LWC.createChart(canvas, {
+        height: height,
+        width: canvas.clientWidth || 600,
+        layout: {
+          background: { type:'solid', color:'transparent' },
+          textColor: cssVar('--faint','#6E6E75'),
+          fontFamily: "'Inter','Helvetica Neue',Helvetica,Arial,sans-serif",
+          attributionLogo: false   // attributed in the card footer instead
+        },
+        grid: { vertLines:{ visible:false }, horzLines:{ visible:false } },
+        // A deep bottom margin would push the axis below zero, and a market cap
+        // is never negative. The volume simply overlaps the foot of the plot.
+        rightPriceScale: { borderVisible:false, scaleMargins:{ top:0.12, bottom:0.08 } },
+        timeScale: { borderVisible:false, timeVisible:true, secondsVisible:false },
+        crosshair: { mode: LWC.CrosshairMode.Magnet },
+        handleScale: { axisPressedMouseMove:false },
+        localization: { priceFormatter: function(v){ return fmtCap(v); } }
+      });
+
+      // Green above where the period started, red below it, with the gradient
+      // fading out towards that line — one series, so there are none of the
+      // seams two overlapping ones would leave at every change of direction.
+      series = chart.addSeries(LWC.BaselineSeries, {
+        baseValue: { type:'price', price: 0 },
+        topLineColor: green,  topFillColor1:'rgba(74,222,128,.28)',  topFillColor2:'rgba(74,222,128,.02)',
+        bottomLineColor: red, bottomFillColor1:'rgba(242,84,91,.02)', bottomFillColor2:'rgba(242,84,91,.28)',
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        priceFormat: { type:'custom', formatter:function(v){ return fmtCap(v); }, minMove:1 },
+        // Market caps are never negative, so the axis should not claim they are.
+        autoscaleInfoProvider: function(original){
+          var res = original();
+          if(res && res.priceRange && res.priceRange.minValue < 0) res.priceRange.minValue = 0;
+          return res;
+        }
+      });
+      volSeries = chart.addSeries(LWC.HistogramSeries, {
+        priceScaleId:'vol', color:'rgba(156,156,163,.34)',
+        priceFormat:{ type:'volume' }, lastValueVisible:false, priceLineVisible:false
+      });
+      chart.priceScale('vol').applyOptions({ scaleMargins:{ top:0.84, bottom:0 }, borderVisible:false });
+
+      ro = new ResizeObserver(function(){
+        if(!destroyed && chart && canvas.clientWidth) chart.resize(canvas.clientWidth, height);
+      });
+      ro.observe(canvas);
+      return chart;
+    }
+
+    function paintTarget(){
+      if(!series) return;
+      if(targetLine){ try{ series.removePriceLine(targetLine); }catch(_){} targetLine=null; }
+      if(!target || !isFinite(target.value) || target.value<=0) return;
+      targetLine = series.createPriceLine({
+        price: target.value,
+        color: target.dir==='above' ? cssVar('--green','#4ADE80') : cssVar('--red','#F2545B'),
+        lineWidth: 1,
+        lineStyle: LWC.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: 'Target '+fmtCap(target.value)
+      });
+    }
+
+    function paintNow(bars){
+      if(!series || !bars.length) return;
+      var last = bars[bars.length-1];
+      var colour = last.close >= baseline ? cssVar('--green','#4ADE80') : cssVar('--red','#F2545B');
+      if(priceLine){ try{ series.removePriceLine(priceLine); }catch(_){} }
+      priceLine = series.createPriceLine({
+        price: last.close, color: colour, lineWidth: 1,
+        lineStyle: LWC.LineStyle.Dotted, axisLabelVisible: true, title: ''
+      });
+    }
+
+    // Where this bet was taken, so the chart shows what has happened since.
+    function paintMarker(bars){
+      if(!bet || !bet.takenAt || !series || !bars.length) return;
+      var t = Math.floor(bet.takenAt/1000);
+      if(t < bars[0].time) return;
+      var nearest = bars[0].time;
+      for(var i=0;i<bars.length;i++){ if(bars[i].time<=t) nearest = bars[i].time; }
+      if(markers){ try{ markers.setMarkers([]); }catch(_){} }
+      markers = LWC.createSeriesMarkers(series, [{
+        time: nearest, position:'belowBar', shape:'arrowUp',
+        color: cssVar('--text2','#E4E4E7'), text:'bet taken'
+      }]);
+    }
+
+    function paintHead(info, bars){
+      if(info && info.pair) pairEl.textContent = info.pair;
+      if(info && info.dex){
+        dexEl.innerHTML = 'on '+esc(info.dex)+' '+IC.ext;
+        dexEl.href = 'https://dexscreener.com/solana/'+encodeURIComponent(info.pool || ca);
+      }
+      var mcap = (bars && bars.length) ? bars[bars.length-1].close : (info && info.mcap);
+      valEl.textContent = mcap ? fmtCap(mcap) : '—';
+      var ch = info && info.change24;
+      if(ch===null || ch===undefined || !isFinite(ch)){ chgEl.textContent=''; chgEl.className='cc-chg'; return; }
+      var up = ch >= 0;
+      chgEl.className = 'cc-chg '+(up?'up':'down');
+      chgEl.innerHTML = (up?'▲':'▼')+' '+(up?'+':'')+(+ch).toFixed(1)+'% (24h)';
+    }
+
+    function draw(force, resetView){
+      loadCandles(ca, tfId, force).then(function(res){
+        if(destroyed) return;
+        paintHead(res.info, res.bars);
+        if(!res.bars.length){
+          showState(res.reason==='nopool' ? 'No chart found for this token'
+                  : res.reason==='error'  ? 'Couldn’t load the chart. Retrying…'
+                  : 'No candles yet for this timeframe');
+          return;
+        }
+        if(!LWC){ showState('Chart library didn’t load'); return; }
+        showState('');
+        ensureChart();
+        // Where the visible period opened decides what counts as up or down.
+        baseline = res.bars[0].close;
+        series.applyOptions({ baseValue:{ type:'price', price: baseline } });
+        series.setData(res.bars.map(function(b){ return { time:b.time, value:b.close }; }));
+        volSeries.setData(res.bars.map(function(b){
+          return { time:b.time, value:b.volume,
+                   color: b.close >= baseline ? 'rgba(74,222,128,.28)' : 'rgba(242,84,91,.26)' };
+        }));
+        paintNow(res.bars);
+        paintTarget();
+        paintMarker(res.bars);
+        lastBars = res.bars;
+        if(resetView) chart.timeScale().fitContent();
+      });
+    }
+
+    function start(){
+      draw(false, true);
+      clearInterval(timer);
+      timer = setInterval(function(){
+        if(destroyed || document.visibilityState==='hidden') return;
+        draw(true, false);   // same visible range, so it updates without jumping
+      }, CHART_REFRESH);
+    }
+
+    start();
+
+    return {
+      el: el,
+      ca: ca,
+      // Called while someone is typing a target, so it has to be cheap.
+      setTarget: function(value, dir){
+        var v = isFinite(value) && value>0 ? value : null;
+        var same = target && target.value===v && target.dir===dir;
+        target = v ? { value:v, dir:dir } : null;
+        if(!same) paintTarget();
+      },
+      resize: function(){
+        if(chart && canvas.clientWidth) chart.resize(canvas.clientWidth, height);
+      },
+      destroy: function(){
+        destroyed = true;
+        clearInterval(timer);
+        if(ro){ try{ ro.disconnect(); }catch(_){} }
+        if(chart){ try{ chart.remove(); }catch(_){} }
+        chart=null;
+      }
+    };
+  }
+
+  // The step-2 card outlives the wizard's re-renders, so it is built once per
+  // coin and moved into each fresh render rather than rebuilt.
+  var wizCard = null;
+  function wizardCard(ca){
+    if(wizCard && wizCard.ca===ca) return wizCard;
+    if(wizCard) wizCard.destroy();
+    wizCard = coinCard({ ca:ca, height:300 });
+    return wizCard;
+  }
+  function mountWizardCard(){
+    var slot = $('wizChartSlot');
+    if(!slot || !CA_RE.test(W.ca||'')) return;
+    var card = wizardCard(W.ca);
+    if(card.el.parentNode !== slot){ slot.innerHTML=''; slot.appendChild(card.el); }
+    card.setTarget(wTarget(), W.dir);
+    card.resize();
+  }
+
+  // Charts opened in a dialog are thrown away when it closes.
+  var modalCards = [];
+  function mountModalCard(ca, bet, height){
+    var slot = document.getElementById('modalChartSlot');
+    if(!slot) return;
+    var card = coinCard({ ca:ca, bet:bet, height:height||220 });
+    slot.appendChild(card.el);
+    modalCards.push(card);
+    card.resize();
+  }
+
   function openChart(ca, b){
     var t = tickerFor(ca), name = t ? '$'+t : shortCa(ca);
-    var head = b
-      ? '<p class="sub">'+(b.dir==='above'?'Higher than ':'Lower than ')+fmtCap(b.target)+
-        (b.expiresAt ? ' · '+timeLeft(b.expiresAt-Date.now()) : '')+'</p>'
-      : '<p class="sub">Mcap = price × supply</p>';
-    openModal('<h3 id="mTitle">'+esc(name)+'</h3>'+head+
-      chartFrame(ca, 380)+
+    openModal('<h3 id="mTitle">'+esc(name)+'</h3>'+
+      (b ? '<p class="sub">'+(b.dir==='above'?'Higher than ':'Lower than ')+fmtCap(b.target)+
+           (b.expiresAt ? ' · '+timeLeft(b.expiresAt-Date.now()) : '')+'</p>' : '')+
+      '<div id="modalChartSlot"></div>'+
       '<p style="margin:12px 0 18px;font-size:12px;color:var(--muted);word-break:break-all">'+esc(ca)+'</p>'+
       '<div class="mact"><a class="wbtn ghost" href="https://dexscreener.com/solana/'+esc(ca)+'" target="_blank" rel="noopener noreferrer">Open on DexScreener</a>'+
-      '<button class="wbtn" data-close="1">Close</button></div>');
+      '<button class="wbtn" data-close="1">Close</button></div>',
+      function(){ mountModalCard(ca, b, 260); });
   }
 
   function loadChainBets(){
@@ -998,7 +1368,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
         ? '<span class="evid">'+esc(evidenceLine(b))+'</span>'
         : (live ? '<span class="nowcap">now <b>'+fmtCap(live)+'</b></span>' : '');
       return '<article class="row" aria-label="'+esc(label(b)+(b.dir==='above'?' above ':' below ')+fmtCap(b.target)+' market cap')+'">'+
-        '<div class="cell"><button type="button" class="coinbtn" data-chart="'+esc(b.ca)+'" aria-label="Open the chart for '+esc(label(b))+'">'+coinAva(b.ca, badge(b))+'</button><div class="stack"><span class="t"><button type="button" class="coinbtn" data-chart="'+esc(b.ca)+'">'+esc(label(b))+'</button></span><span class="s ca"><button type="button" class="cabtn" data-copy="'+esc(b.ca)+'" aria-label="Copy contract address">'+esc(shortCa(b.ca))+'</button><a href="https://dexscreener.com/solana/'+esc(b.ca)+'" target="_blank" rel="noopener noreferrer" aria-label="Open chart on DexScreener">'+IC.ext+'</a>'+
+        '<div class="cell"><button type="button" class="coinbtn" data-chart="'+esc(b.ca)+'" data-bet="'+esc(b.id)+'" aria-label="Open the chart for '+esc(label(b))+'">'+coinAva(b.ca, badge(b))+'</button><div class="stack"><span class="t"><button type="button" class="coinbtn" data-chart="'+esc(b.ca)+'" data-bet="'+esc(b.id)+'">'+esc(label(b))+'</button></span><span class="s ca"><button type="button" class="cabtn" data-copy="'+esc(b.ca)+'" aria-label="Copy contract address">'+esc(shortCa(b.ca))+'</button><a href="https://dexscreener.com/solana/'+esc(b.ca)+'" target="_blank" rel="noopener noreferrer" aria-label="Open chart on DexScreener">'+IC.ext+'</a>'+
         '<a class="exlink" href="'+esc(explorer('address',b.pda))+'" target="_blank" rel="noopener noreferrer" aria-label="View this bet\u2019s escrow account on Solana Explorer">escrow '+IC.ext+'</a></span></div></div>'+
         '<div class="cell" style="gap:14px">'+arrow(b.dir)+'<div class="stack" style="gap:2px"><span class="t big">'+fmtCap(b.target)+'</span><span class="s sm">'+(b.dir==='above'?'Higher':'Lower')+(isFinite(b.startMc)&&b.startMc>0?' · from '+fmtCap(b.startMc):' market cap')+'</span>'+extra+'</div></div>'+
         '<div class="cell time" style="gap:16px">'+IC.clock+'<span class="days">'+esc(when)+'</span></div>'+
@@ -1072,7 +1442,11 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   }
 
   // ── modal ──
-  function closeModal(){ $('modalRoot').innerHTML=''; }
+  function closeModal(){
+    modalCards.forEach(function(c){ try{ c.destroy(); }catch(_){} });
+    modalCards = [];
+    $('modalRoot').innerHTML='';
+  }
   function openModal(html, onReady){
     $('modalRoot').innerHTML='<div class="scrim" data-close="1"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">'+html+'</div></div>';
     if(onReady) onReady();
@@ -1293,19 +1667,17 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
         '<div class="orline" aria-hidden="true">or</div>'+
         '<div class="pophead"><p class="poplbl">Trending on pump.fun<span class="asof">· live market caps</span></p>'+'<span style="display:flex;gap:18px">'+(S.owner?'<button type="button" class="editlink" data-wedittrend="1">Edit list</button>':'')+'</span>'+'</div><div class="pop">'+
         TREND.items.map(function(c,i){
-          var live=ensureLive(c.ca);
-          return '<button type="button" class="popc" data-pop="'+i+'" title="'+esc(c.name)+'">'+coinAva(c.ca, c.ticker.slice(0,4))+'<div style="min-width:0"><b>'+esc(c.ticker)+'</b><span>'+(live?fmtCap(live):(LIVE[c.ca]===undefined?esc(c.name):'—'))+'</span></div></button>';
+          var live=ensureLive(c.ca), info=mcapCache[c.ca], ch=info && info.change24;
+          var chg = (ch!==null && ch!==undefined && isFinite(ch))
+            ? '<span class="chg '+(ch>=0?'up':'down')+'">'+(ch>=0?'+':'')+(+ch).toFixed(1)+'%</span>' : '';
+          return '<button type="button" class="popc" data-pop="'+i+'" title="'+esc(c.name)+'">'+coinAva(c.ca, c.ticker.slice(0,4))+'<div style="min-width:0"><b>'+esc(c.ticker)+'</b><span>'+(live?fmtCap(live):(LIVE[c.ca]===undefined?esc(c.name):'—'))+chg+'</span></div></button>';
         }).join('')+
         '</div></div>';
     } else if(W.step===2){
       var kt = findTrend(W.ca), known=!!kt, hi=W.dir==='above';
       h='<div class="wiz-in" style="max-width:860px"><h2 id="wTitle">What’s your call?</h2>'+coinHead()+
-        '<div class="mcapcard"><span class="mclbl">Current mcap</span>'+
-          '<div class="mcval">'+(hasCur()?fmtCap(wCur()):(W.curLoading?'…':'—'))+'</div>'+
-          '<span class="mcnote">'+(hasCur()
-            ? '<span class="live"><i></i>live</span> · Mcap = price × supply'
-            : (W.curLoading ? 'Reading the market…' : 'No pool found for this coin — you can still bet, but check the chart'))+'</span></div>'+
-        chartFrame(W.ca, 260)+
+        '<div id="wizChartSlot"></div>'+
+        '<p class="mcnote" style="margin:-8px 0 20px;text-align:center">Mcap = price × total supply — the same number the bet settles on.</p>'+
         '<p class="callq">Where’s it going?</p>'+
         '<div class="callseg" role="group" aria-label="Your call">'+
           '<button type="button" class="up" data-wdir="above" aria-pressed="'+(W.dir==='above')+'"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg><span>Higher</span></button>'+
@@ -1343,6 +1715,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
         '<div class="wnav narrow"><button type="button" class="wbtn ghost" data-wstep="2">'+ARROW_L+' Back</button><button type="button" class="nextbtn" id="wCreate" data-wcreate="1">Create Bet '+ARROW_R+'</button></div></div>';
     }
     $('wizBody').innerHTML=h; $('wizBody').dataset.step=String(W.step);
+    if(W.step===2) mountWizardCard();
     wizMeta();
     if(focus){ var f=$('wizBody').querySelector('input'); if(f) f.focus(); }
   }
@@ -1362,6 +1735,8 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
           ? 'You win <b>'+fmtSol(split(st).win)+'</b> if it’s <b style="color:var(--'+(W.dir==='above'?'green':'red')+')">'+(W.dir==='above'?'above ':'below ')+fmtCap(t)+'</b> when '+W.days+(W.days===1?' day':' days')+' are up.'
           : '';
       }
+      // The dashed target line follows what is being typed.
+      if(wizCard && wizCard.ca===W.ca) wizCard.setTarget(t, W.dir);
       document.querySelectorAll('[data-wmult]').forEach(function(b){ b.setAttribute('aria-pressed', String(+b.dataset.wmult===W.mult)); });
       if(W.dir && isFinite(t)&&t>0 && !dirOk()) msg = W.dir==='above' ? 'For “Higher”, the target has to be above '+fmtCap(c)+'.' : 'For “Lower”, the target has to be below '+fmtCap(c)+'.';
       else if(W.ticker && !TICK_RE.test(W.ticker)) msg='Ticker: letters and numbers only, max 10.';
@@ -1504,8 +1879,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     var key = 'You win if '+esc(label(b))+' <b>never touches</b> '+fmtCap(b.target)+' before '+fmtWhen(deadline)+'.';
     openModal('<h3 id="mTitle">Take this bet?</h3><p>'+key+'</p>'+
       '<p style="margin:-6px 0 16px;font-size:13px;color:var(--muted)">If it touches that market cap at any moment before then — even for one minute — the other side wins straight away. <button type="button" class="ruleslink" data-rules="1">How it works</button></p>'+
-      chartFrame(b.ca, 200)+
-      '<div style="height:16px"></div>'+
+      '<div id="modalChartSlot"></div>'+
       '<div class="summary"><div><span>Your stake</span><span>'+fmtSol(b.stake)+'</span></div>'+
       '<div><span>Pot</span><span>'+fmtSol(sp.pot)+'</span></div>'+
       '<div><span>Platform fee ('+(feeBps()/100)+'%)</span><span>'+fmtSol(sp.fee)+'</span></div>'+
@@ -1513,7 +1887,10 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       '<div><span>Against</span><span>'+esc(nameOf(b.creator))+'</span></div></div>'+
       '<p style="margin:0 0 18px;font-size:13px;color:var(--muted)">Your stake moves into the escrow account as soon as you approve. Devnet SOL, no real value.</p>'+
       '<div class="mact"><button class="wbtn ghost" data-close="1">Not now</button><button class="wbtn" id="confirmTake">Take Bet</button></div>',
-      function(){ $('confirmTake').onclick=function(){ closeModal(); take(id); }; });
+      function(){
+        mountModalCard(b.ca, b, 200);
+        $('confirmTake').onclick=function(){ closeModal(); take(id); };
+      });
   }
   function take(id){
     var b=find(id); if(!b) return;
@@ -1613,7 +1990,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       return;
     }
     var ch=e.target.closest('[data-chart]');
-    if(ch){ openChart(ch.getAttribute('data-chart'), find(ch.getAttribute('data-chart'))); return; }
+    if(ch){ openChart(ch.getAttribute('data-chart'), find(ch.getAttribute('data-bet'))); return; }
     if(e.target.closest('[data-rules]')){ openRules(); return; }
     var wb=e.target.closest('[data-wallet]'); if(wb){ connectWallet(wb.id==='walletBtn'?'nav':'hero'); return; }
     var t=e.target.closest('[data-close],[data-go],[data-tab],[data-act]');
