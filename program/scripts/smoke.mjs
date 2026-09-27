@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // End-to-end check against a deployed program: creates a bet, takes it from a
-// second wallet, then creates and cancels a third, asserting the lamports move
-// exactly as the program promises.
+// second wallet, creates and cancels a third, and then watches the keeper
+// settle a bet early on a touch. Lamports are asserted exactly.
 //
 //   node scripts/smoke.mjs [--cluster devnet] [--keypair PATH] [--stake 0.01]
+//                          [--skip-early] [--wait 300]
 //
 // The funding wallet pays for a throwaway taker, so this needs roughly
-// stake * 2 + 0.05 SOL to run. Settling is not covered here: only the resolver
-// wallet can sign that, and a bet cannot expire faster than its shortest
-// timeframe of one day.
+// stake * 3 + 0.08 SOL to run. The taker-wins path is not covered here: a bet
+// cannot expire faster than its shortest timeframe of one day, so that one is
+// proven by the Rust suite and by letting a 1-day bet run.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -163,7 +164,7 @@ async function main() {
 
   const mint = Keypair.generate().publicKey; // stands in for a coin address
   const rentFor = (n) => connection.getMinimumBalanceForRentExemption(n);
-  const rent = await rentFor(213);
+  const rent = await rentFor(221);
 
   // ── create and take ──────────────────────────────────────────────────────
   const idA = Date.now();
@@ -202,7 +203,60 @@ async function main() {
   // Two signature fees, and the stake and rent both came back.
   pass(beforeB - afterB === 10_000, `cancel returned the stake and the rent (net ${beforeB - afterB} lamports of fees)`);
 
-  console.log(`\n  Bet A is live on chain and open to settle later:`);
+  // ── the keeper settles a touch early ─────────────────────────────────────
+  if (flags['skip-early']) {
+    console.log('\n  Skipping the early-win check.\n');
+    return;
+  }
+
+  const CA = flags.coin ?? 'GTBxUiw6wJdmmkCGZgRHLyYxqu1vG4KtRpeox6yDpump';
+  const coin = new PublicKey(CA);
+  const dex = await (await fetch(`https://api.dexscreener.com/latest/dex/tokens/${CA}`)).json();
+  const top = (dex.pairs ?? []).filter((p) => p.chainId === 'solana')
+    .sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0))[0];
+  if (!top) die(`No pool found for ${CA}`);
+  const liveMcap = Number(top.fdv);
+  console.log(`\n  Live mcap for ${top.baseToken?.symbol ?? CA}: $${Math.round(liveMcap).toLocaleString()}`);
+
+  // A target just under the live market cap, so the very next candle touches it.
+  const idC = Date.now() + 2;
+  const betC = betPda(creator.publicKey, idC);
+  await send(connection, [creator], ixCreate(creator.publicKey, idC, {
+    mint: coin,
+    direction: 0,
+    target: Math.round(liveMcap * 0.99),
+    start: Math.round(liveMcap * 0.98),
+    stake,
+    duration: 7 * DAY,
+  }), 'create C');
+  await send(connection, [taker], ixTake(taker.publicKey, betC), 'take C');
+
+  const creatorBefore = await connection.getBalance(creator.publicKey);
+  const waitSecs = Number(flags.wait ?? 300);
+  console.log(`  waiting up to ${waitSecs}s for the keeper to settle it early…`);
+
+  const started = Date.now();
+  let settled = false;
+  while ((Date.now() - started) / 1000 < waitSecs) {
+    await new Promise((r) => setTimeout(r, 10_000));
+    if (!(await readBet(connection, betC))) { settled = true; break; }
+    process.stdout.write('.');
+  }
+  console.log('');
+
+  pass(settled, `bet C was settled by the keeper without anyone signing (${Math.round((Date.now() - started) / 1000)}s)`);
+  if (settled) {
+    const creatorAfter = await connection.getBalance(creator.publicKey);
+    // Creator wins: back comes the rent plus the pot less the platform fee.
+    const fee = Math.floor(stake * 2 * 200 / 10_000);
+    pass(
+      creatorAfter - creatorBefore === rent + stake * 2 - fee,
+      `creator received the pot less the 2% fee (${creatorAfter - creatorBefore} lamports)`,
+    );
+    console.log(`\n  https://explorer.solana.com/address/${betC.toBase58()}?cluster=${cluster}`);
+  }
+
+  console.log(`\n  Bet A is still live on chain:`);
   console.log(`  https://explorer.solana.com/address/${betA.toBase58()}?cluster=${cluster}\n`);
 }
 

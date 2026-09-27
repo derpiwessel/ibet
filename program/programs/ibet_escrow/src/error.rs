@@ -44,6 +44,12 @@ pub enum EscrowError {
     TakerMismatch,
     #[msg("Account does not match the fee wallet stored on the config")]
     FeeWalletMismatch,
+    #[msg("The observed market cap was not seen inside this bet's window")]
+    ObservedOutsideWindow,
+    #[msg("The observed market cap does not reach the target")]
+    ObservedDoesNotReachTarget,
+    #[msg("The taker can only win once the deadline has passed")]
+    TakerCannotWinYet,
     #[msg("Arithmetic overflow")]
     MathOverflow,
     #[msg("Escrow does not hold enough lamports")]

@@ -15,7 +15,7 @@ pub use constants::*;
 pub use instructions::*;
 pub use state::*;
 
-declare_id!("GACUebjQB1zZWuQW3pkhQLzYJL9yMtU8dX4TsfRyugq1");
+declare_id!("51Qu3DKZZ9bHJKiNyXhKcTp7PqJNW1YqVcx7Cqm6Vyv");
 
 #[program]
 pub mod ibet_escrow {
@@ -46,9 +46,15 @@ pub mod ibet_escrow {
         instructions::cancel_bet::handle_cancel_bet(ctx)
     }
 
-    /// Resolver-only, inside the grace window: pays the fee and the pot out.
-    pub fn settle_bet(ctx: Context<SettleBet>, final_mcap_usd: u64) -> Result<()> {
-        instructions::settle_bet::handle_settle_bet(ctx, final_mcap_usd)
+    /// Resolver-only, inside the grace window. A creator win can be settled the
+    /// moment the target is touched; a taker win only after the deadline.
+    pub fn settle_bet(
+        ctx: Context<SettleBet>,
+        outcome: Outcome,
+        observed_mcap_usd: u64,
+        observed_at: i64,
+    ) -> Result<()> {
+        instructions::settle_bet::handle_settle_bet(ctx, outcome, observed_mcap_usd, observed_at)
     }
 
     /// Anyone, once the grace window has passed: both sides get their stake back.

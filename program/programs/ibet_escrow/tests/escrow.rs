@@ -11,7 +11,7 @@ use {
     ibet_escrow::{
         error::EscrowError,
         instructions::{CreateBetArgs, UpdateConfigArgs},
-        state::{Bet, BetStatus},
+        state::{Bet, BetStatus, Outcome},
     },
     litesvm::types::TransactionMetadata,
     solana_keypair::Keypair,
@@ -142,7 +142,7 @@ fn the_bet_account_is_exactly_as_big_as_its_layout() {
 fn the_account_sizes_the_frontend_hardcodes_still_hold() {
     // index.html filters `getProgramAccounts` on these byte sizes and decodes
     // the fields by hand, so a layout change has to fail here first.
-    assert_eq!(8 + Bet::INIT_SPACE, 213, "BET_SIZE in index.html");
+    assert_eq!(8 + Bet::INIT_SPACE, 221, "BET_SIZE in index.html");
     assert_eq!(
         8 + ibet_escrow::state::Config::INIT_SPACE,
         132,
@@ -397,7 +397,9 @@ fn settling_pays_the_creator_when_their_call_was_right() {
         &creator,
         &taker,
         &fee_wallet,
-        6_000_000, // above the 5M target
+        Outcome::CreatorWins,
+        6_000_000, // touched, above the 5M target
+        env.mid_window(),
     );
     let meta = env.send(&[ix], &[&resolver]).unwrap();
     assert_event_emitted(&meta);
@@ -437,7 +439,9 @@ fn settling_pays_the_taker_when_the_call_was_wrong() {
         &creator,
         &taker,
         &fee_wallet,
-        4_999_999, // just under the 5M target
+        Outcome::TakerWins,
+        4_999_999, // never got to the 5M target
+        env.window_end(),
     );
     env.send(&[ix], &[&resolver]).unwrap();
 
@@ -470,7 +474,9 @@ fn landing_exactly_on_the_target_goes_to_the_creator() {
         &creator,
         &taker,
         &fee_wallet,
+        Outcome::CreatorWins,
         5_000_000,
+        env.mid_window(),
     );
     env.send(&[ix], &[&resolver]).unwrap();
     assert_eq!(env.bal(&creator), c0 - SOL + 1_960_000_000);
@@ -503,7 +509,9 @@ fn landing_exactly_on_the_target_goes_to_the_creator_for_lower_bets_too() {
         &creator,
         &taker,
         &fee_wallet,
+        Outcome::CreatorWins,
         400_000,
+        env.mid_window(),
     );
     env.send(&[ix], &[&resolver]).unwrap();
     assert_eq!(env.bal(&creator), c0 - SOL + 1_960_000_000);
@@ -529,7 +537,9 @@ fn a_zero_fee_sends_the_whole_pot_to_the_winner() {
         &creator,
         &taker,
         &fee_wallet,
+        Outcome::CreatorWins,
         6_000_000,
+        env.mid_window(),
     );
     env.send(&[ix], &[&resolver]).unwrap();
 
@@ -559,14 +569,17 @@ fn only_the_resolver_can_settle() {
             &creator,
             &taker,
             &fee_wallet,
+            Outcome::CreatorWins,
             6_000_000,
+            env.mid_window(),
         );
         assert_escrow_err(env.send(&[ix], &[&signer]), EscrowError::NotResolver);
     }
 }
 
 #[test]
-fn a_bet_cannot_be_settled_before_it_expires() {
+fn the_taker_cannot_win_before_the_deadline() {
+    // "Never touched" cannot be known until the window has actually closed.
     let mut env = Env::new();
     let (creator, taker, fee_wallet) = (
         env.creator.pubkey(),
@@ -583,9 +596,11 @@ fn a_bet_cannot_be_settled_before_it_expires() {
         &creator,
         &taker,
         &fee_wallet,
-        6_000_000,
+        Outcome::TakerWins,
+        1_000,
+        env.mid_window(),
     );
-    assert_escrow_err(env.send(&[ix], &[&resolver]), EscrowError::NotYetExpired);
+    assert_escrow_err(env.send(&[ix], &[&resolver]), EscrowError::TakerCannotWinYet);
 }
 
 #[test]
@@ -606,7 +621,9 @@ fn a_bet_can_still_be_settled_on_the_last_second_of_the_grace_window() {
         &creator,
         &taker,
         &fee_wallet,
+        Outcome::CreatorWins,
         6_000_000,
+        env.mid_window(),
     );
     env.send(&[ix], &[&resolver]).unwrap();
     assert_eq!(env.bal(&bet_pda), 0);
@@ -630,7 +647,9 @@ fn a_bet_cannot_be_settled_after_the_grace_window() {
         &creator,
         &taker,
         &fee_wallet,
+        Outcome::CreatorWins,
         6_000_000,
+        env.mid_window(),
     );
     assert_escrow_err(env.send(&[ix], &[&resolver]), EscrowError::GracePeriodOver);
 }
@@ -654,7 +673,9 @@ fn an_open_bet_cannot_be_settled() {
         &creator,
         &taker,
         &fee_wallet,
+        Outcome::CreatorWins,
         6_000_000,
+        env.mid_window(),
     );
     assert_escrow_err(env.send(&[ix], &[&resolver]), EscrowError::TakerMismatch);
 }
@@ -680,7 +701,9 @@ fn the_resolver_cannot_redirect_a_payout() {
         &creator,
         &taker,
         &attacker.pubkey(),
+        Outcome::CreatorWins,
         6_000_000,
+        env.mid_window(),
     );
     assert_escrow_err(
         env.send(&[ix], &[&resolver]),
@@ -694,7 +717,9 @@ fn the_resolver_cannot_redirect_a_payout() {
         &creator,
         &attacker.pubkey(),
         &fee_wallet,
+        Outcome::CreatorWins,
         6_000_000,
+        env.mid_window(),
     );
     assert_escrow_err(env.send(&[ix], &[&resolver]), EscrowError::TakerMismatch);
 
@@ -705,7 +730,9 @@ fn the_resolver_cannot_redirect_a_payout() {
         &attacker.pubkey(),
         &taker,
         &fee_wallet,
+        Outcome::CreatorWins,
         6_000_000,
+        env.mid_window(),
     );
     assert_escrow_err(env.send(&[ix], &[&resolver]), EscrowError::CreatorMismatch);
 
@@ -741,13 +768,267 @@ fn the_fee_wallet_may_also_be_the_winner() {
         &creator,
         &taker,
         &creator, // fee wallet == creator == winner
+        Outcome::CreatorWins,
         6_000_000,
+        env.mid_window(),
     );
     env.send(&[ix], &[&resolver]).unwrap();
 
     // Creator receives the payout and the fee: the whole pot, less their stake.
     assert_eq!(env.bal(&creator), c0 - SOL + 2 * SOL);
     assert_eq!(env.bal(&bet_pda), 0);
+}
+
+// ── touch to win ──────────────────────────────────────────────────────────
+
+#[test]
+fn a_touch_pays_the_creator_straight_away() {
+    // The whole point of phase 2: the creator does not wait for the deadline.
+    let mut env = Env::new();
+    let (creator, taker, fee_wallet) = (
+        env.creator.pubkey(),
+        env.taker.pubkey(),
+        env.fee_wallet.pubkey(),
+    );
+    let (c0, t0, f0) = (env.bal(&creator), env.bal(&taker), env.bal(&fee_wallet));
+
+    let bet_pda = env.matched_bet(1);
+    // One hour in, nowhere near the seven-day deadline.
+    env.advance(3_600);
+
+    let resolver = env.resolver.insecure_clone();
+    let touched_at = BASE_TIME + 1_800;
+    let ix = env.ix_settle(
+        &resolver.pubkey(),
+        &bet_pda,
+        &creator,
+        &taker,
+        &fee_wallet,
+        Outcome::CreatorWins,
+        5_200_000,
+        touched_at,
+    );
+    env.send(&[ix], &[&resolver]).unwrap();
+
+    assert_eq!(env.bal(&creator), c0 - SOL + 1_960_000_000, "paid immediately");
+    assert_eq!(env.bal(&taker), t0 - SOL);
+    assert_eq!(env.bal(&fee_wallet), f0 + 40_000_000, "fee unchanged at 2%");
+    assert_eq!(env.bal(&bet_pda), 0);
+    assert_eq!(env.escrow_total(&bet_pda), c0 + t0 + f0);
+}
+
+#[test]
+fn a_touch_exactly_on_the_target_counts() {
+    let mut env = Env::new();
+    let (creator, taker, fee_wallet) = (
+        env.creator.pubkey(),
+        env.taker.pubkey(),
+        env.fee_wallet.pubkey(),
+    );
+    let c0 = env.bal(&creator);
+    let bet_pda = env.matched_bet(1);
+    env.advance(3_600);
+
+    let resolver = env.resolver.insecure_clone();
+    let ix = env.ix_settle(
+        &resolver.pubkey(),
+        &bet_pda,
+        &creator,
+        &taker,
+        &fee_wallet,
+        Outcome::CreatorWins,
+        5_000_000, // exactly the target
+        BASE_TIME + 1_800,
+    );
+    env.send(&[ix], &[&resolver]).unwrap();
+    assert_eq!(env.bal(&creator), c0 - SOL + 1_960_000_000);
+}
+
+#[test]
+fn a_touch_on_a_lower_bet_pays_the_creator_straight_away() {
+    let mut env = Env::new();
+    let (creator, taker, fee_wallet) = (
+        env.creator.pubkey(),
+        env.taker.pubkey(),
+        env.fee_wallet.pubkey(),
+    );
+    let c0 = env.bal(&creator);
+
+    let args = CreateBetArgs {
+        direction: LOWER,
+        start_mcap_usd: 1_000_000,
+        target_mcap_usd: 400_000,
+        ..env.default_args(1)
+    };
+    let bet_pda = env.open_bet_with(args);
+    env.take(&bet_pda);
+    env.advance(3_600);
+
+    let resolver = env.resolver.insecure_clone();
+    let ix = env.ix_settle(
+        &resolver.pubkey(),
+        &bet_pda,
+        &creator,
+        &taker,
+        &fee_wallet,
+        Outcome::CreatorWins,
+        380_000, // dipped below the 400k target
+        BASE_TIME + 1_800,
+    );
+    env.send(&[ix], &[&resolver]).unwrap();
+    assert_eq!(env.bal(&creator), c0 - SOL + 1_960_000_000);
+}
+
+#[test]
+fn a_touch_outside_the_window_is_refused() {
+    let mut env = Env::new();
+    let (creator, taker, fee_wallet) = (
+        env.creator.pubkey(),
+        env.taker.pubkey(),
+        env.fee_wallet.pubkey(),
+    );
+    let bet_pda = env.matched_bet(1);
+    env.advance(7 * DAY + 3_600);
+    let resolver = env.resolver.insecure_clone();
+
+    // Before the bet was taken.
+    for observed_at in [BASE_TIME - 1, BASE_TIME + 7 * DAY + 1] {
+        let ix = env.ix_settle(
+            &resolver.pubkey(),
+            &bet_pda,
+            &creator,
+            &taker,
+            &fee_wallet,
+            Outcome::CreatorWins,
+            9_000_000,
+            observed_at,
+        );
+        assert_escrow_err(
+            env.send(&[ix], &[&resolver]),
+            EscrowError::ObservedOutsideWindow,
+        );
+    }
+
+    // Untouched, and the escrow still holds everything.
+    assert_eq!(env.bet(&bet_pda).status, BetStatus::Matched);
+    assert_eq!(env.bal(&bet_pda), env.bet_rent() + 2 * SOL);
+}
+
+#[test]
+fn a_creator_win_needs_an_mcap_that_actually_reaches_the_target() {
+    let mut env = Env::new();
+    let (creator, taker, fee_wallet) = (
+        env.creator.pubkey(),
+        env.taker.pubkey(),
+        env.fee_wallet.pubkey(),
+    );
+    let bet_pda = env.matched_bet(1);
+    env.advance(3_600);
+
+    let resolver = env.resolver.insecure_clone();
+    let ix = env.ix_settle(
+        &resolver.pubkey(),
+        &bet_pda,
+        &creator,
+        &taker,
+        &fee_wallet,
+        Outcome::CreatorWins,
+        4_999_999, // one dollar short of the 5M target
+        env.mid_window(),
+    );
+    assert_escrow_err(
+        env.send(&[ix], &[&resolver]),
+        EscrowError::ObservedDoesNotReachTarget,
+    );
+}
+
+#[test]
+fn a_lower_bet_creator_win_needs_an_mcap_at_or_under_the_target() {
+    let mut env = Env::new();
+    let (creator, taker, fee_wallet) = (
+        env.creator.pubkey(),
+        env.taker.pubkey(),
+        env.fee_wallet.pubkey(),
+    );
+    let args = CreateBetArgs {
+        direction: LOWER,
+        start_mcap_usd: 1_000_000,
+        target_mcap_usd: 400_000,
+        ..env.default_args(1)
+    };
+    let bet_pda = env.open_bet_with(args);
+    env.take(&bet_pda);
+    env.advance(3_600);
+
+    let resolver = env.resolver.insecure_clone();
+    let ix = env.ix_settle(
+        &resolver.pubkey(),
+        &bet_pda,
+        &creator,
+        &taker,
+        &fee_wallet,
+        Outcome::CreatorWins,
+        400_001, // one dollar above the target
+        env.mid_window(),
+    );
+    assert_escrow_err(
+        env.send(&[ix], &[&resolver]),
+        EscrowError::ObservedDoesNotReachTarget,
+    );
+}
+
+#[test]
+fn the_evidence_is_stored_in_the_settled_event() {
+    let mut env = Env::new();
+    let (creator, taker, fee_wallet) = (
+        env.creator.pubkey(),
+        env.taker.pubkey(),
+        env.fee_wallet.pubkey(),
+    );
+    let bet_pda = env.matched_bet(1);
+    env.advance(3_600);
+
+    let resolver = env.resolver.insecure_clone();
+    let ix = env.ix_settle(
+        &resolver.pubkey(),
+        &bet_pda,
+        &creator,
+        &taker,
+        &fee_wallet,
+        Outcome::CreatorWins,
+        5_432_100,
+        BASE_TIME + 1_234,
+    );
+    let meta = env.send(&[ix], &[&resolver]).unwrap();
+    assert_event_emitted(&meta);
+}
+
+#[test]
+fn a_touch_still_pays_after_the_deadline_inside_the_grace_window() {
+    // A keeper that was down for a while still settles on the old candle.
+    let mut env = Env::new();
+    let (creator, taker, fee_wallet) = (
+        env.creator.pubkey(),
+        env.taker.pubkey(),
+        env.fee_wallet.pubkey(),
+    );
+    let c0 = env.bal(&creator);
+    let bet_pda = env.matched_bet(1);
+    env.advance(7 * DAY + GRACE_SECS);
+
+    let resolver = env.resolver.insecure_clone();
+    let ix = env.ix_settle(
+        &resolver.pubkey(),
+        &bet_pda,
+        &creator,
+        &taker,
+        &fee_wallet,
+        Outcome::CreatorWins,
+        6_000_000,
+        BASE_TIME + 2 * DAY, // the candle that touched, days earlier
+    );
+    env.send(&[ix], &[&resolver]).unwrap();
+    assert_eq!(env.bal(&creator), c0 - SOL + 1_960_000_000);
 }
 
 // ── refund ────────────────────────────────────────────────────────────────
@@ -863,7 +1144,9 @@ fn pausing_never_traps_money() {
         &creator,
         &taker,
         &fee_wallet,
+        Outcome::CreatorWins,
         6_000_000,
+        env.mid_window(),
     );
     env.send(&[ix], &[&resolver]).unwrap();
     assert_eq!(env.bal(&to_settle), 0);
@@ -901,14 +1184,19 @@ fn many_bets_in_parallel_all_balance_out() {
 
     env.advance(7 * DAY);
     let resolver = env.resolver.insecure_clone();
-    for (bet, final_mcap) in [(settle_creator, 9_000_000u64), (settle_taker, 1_000u64)] {
+    for (bet, outcome, observed) in [
+        (settle_creator, Outcome::CreatorWins, 9_000_000u64),
+        (settle_taker, Outcome::TakerWins, 1_000u64),
+    ] {
         let ix = env.ix_settle(
             &resolver.pubkey(),
             &bet,
             &creator,
             &taker,
             &fee_wallet,
-            final_mcap,
+            outcome,
+            observed,
+            env.mid_window(),
         );
         env.send(&[ix], &[&resolver]).unwrap();
     }

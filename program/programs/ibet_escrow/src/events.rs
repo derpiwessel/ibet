@@ -54,7 +54,9 @@ pub struct BetSettled {
     pub token_mint: Pubkey,
     pub direction: u8,
     pub target_mcap_usd: u64,
-    pub final_mcap_usd: u64,
+    /// The market cap that decided it, and when it was observed.
+    pub observed_mcap_usd: u64,
+    pub observed_at: i64,
     pub stake: u64,
     pub fee: u64,
     pub payout: u64,

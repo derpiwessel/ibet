@@ -19,7 +19,7 @@ use {
     },
     ibet_escrow::{
         instructions::{CreateBetArgs, InitConfigArgs, UpdateConfigArgs},
-        state::Bet,
+        state::{Bet, Outcome},
     },
     litesvm::{types::TransactionResult, LiteSVM},
     solana_clock::Clock,
@@ -221,6 +221,7 @@ impl Env {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn ix_settle(
         &self,
         resolver: &Pubkey,
@@ -228,11 +229,18 @@ impl Env {
         creator: &Pubkey,
         taker: &Pubkey,
         fee_wallet: &Pubkey,
-        final_mcap_usd: u64,
+        outcome: Outcome,
+        observed_mcap_usd: u64,
+        observed_at: i64,
     ) -> Instruction {
         Instruction::new_with_bytes(
             self.program_id,
-            &ibet_escrow::instruction::SettleBet { final_mcap_usd }.data(),
+            &ibet_escrow::instruction::SettleBet {
+                outcome,
+                observed_mcap_usd,
+                observed_at,
+            }
+            .data(),
             ibet_escrow::accounts::SettleBet {
                 resolver: *resolver,
                 config: self.config,
@@ -279,6 +287,16 @@ impl Env {
     }
 
     // ── common flows ──────────────────────────────────────────────────────
+
+    /// A moment inside a default bet's window, usable as settlement evidence.
+    pub fn mid_window(&self) -> i64 {
+        BASE_TIME + 3 * DAY
+    }
+
+    /// The last moment that still counts as inside a default bet's window.
+    pub fn window_end(&self) -> i64 {
+        BASE_TIME + 7 * DAY
+    }
 
     /// A standard 1 SOL / 7 day Higher bet from `self.creator`.
     pub fn default_args(&self, bet_id: u64) -> CreateBetArgs {

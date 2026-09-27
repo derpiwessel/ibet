@@ -98,7 +98,8 @@ pub fn handle_create_bet(ctx: Context<CreateBet>, args: CreateBetArgs) -> Result
     bet.expires_at = 0;
     bet.status = BetStatus::Open;
     bet.winner = None;
-    bet.final_mcap_usd = 0;
+    bet.observed_mcap_usd = 0;
+    bet.observed_at = 0;
     bet.bet_id = args.bet_id;
     bet.bump = ctx.bumps.bet;
 

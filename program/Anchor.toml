@@ -7,7 +7,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-ibet_escrow = "GACUebjQB1zZWuQW3pkhQLzYJL9yMtU8dX4TsfRyugq1"
+ibet_escrow = "51Qu3DKZZ9bHJKiNyXhKcTp7PqJNW1YqVcx7Cqm6Vyv"
 
 [provider]
 cluster = "localnet"

@@ -24,6 +24,15 @@ pub struct Config {
     pub bump: u8,
 }
 
+/// Who the resolver says won. The program cannot see price history, so it
+/// verifies what it can: a creator win has to come with a market cap that
+/// actually reaches the target, observed inside the bet's window.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Outcome {
+    CreatorWins,
+    TakerWins,
+}
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BetStatus {
     Open,
@@ -33,8 +42,12 @@ pub enum BetStatus {
     Refunded,
 }
 
-// All variants are unit variants, so borsh encodes the status in one byte.
+// All variants are unit variants, so borsh encodes these in one byte.
 impl anchor_lang::Space for BetStatus {
+    const INIT_SPACE: usize = 1;
+}
+
+impl anchor_lang::Space for Outcome {
     const INIT_SPACE: usize = 1;
 }
 
@@ -60,7 +73,13 @@ pub struct Bet {
     pub expires_at: i64,
     pub status: BetStatus,
     pub winner: Option<Pubkey>,
-    pub final_mcap_usd: u64,
+    /// The market cap the resolver settled on: the candle high that touched a
+    /// Higher target, the low that touched a Lower one, or the last observed
+    /// value when the target was never reached.
+    pub observed_mcap_usd: u64,
+    /// When that market cap was observed — the candle's own time, not the time
+    /// the settlement was sent.
+    pub observed_at: i64,
     /// Client-chosen id, part of the PDA seeds.
     pub bet_id: u64,
     pub bump: u8,
@@ -74,12 +93,12 @@ impl Bet {
             .ok_or_else(|| EscrowError::MathOverflow.into())
     }
 
-    /// Did the creator's call come true? The target is inclusive on both sides:
-    /// landing exactly on it means the creator wins.
-    pub fn creator_wins(&self, final_mcap_usd: u64) -> Result<bool> {
+    /// Does this market cap touch the target? Inclusive on both sides: landing
+    /// exactly on the target counts as a touch.
+    pub fn touches_target(&self, mcap_usd: u64) -> Result<bool> {
         match self.direction {
-            DIRECTION_HIGHER => Ok(final_mcap_usd >= self.target_mcap_usd),
-            DIRECTION_LOWER => Ok(final_mcap_usd <= self.target_mcap_usd),
+            DIRECTION_HIGHER => Ok(mcap_usd >= self.target_mcap_usd),
+            DIRECTION_LOWER => Ok(mcap_usd <= self.target_mcap_usd),
             _ => Err(EscrowError::InvalidDirection.into()),
         }
     }
