@@ -265,12 +265,20 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .mact{display:flex;gap:10px}.mact .wbtn{flex:1}
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--btn);color:var(--btn-fg);padding:12px 18px;border-radius:12px;font-size:14px;font-weight:500;z-index:60;box-shadow:var(--shadow);max-width:calc(100% - 32px)}
 .banner{margin:0 0 18px;padding:12px 16px;border-radius:12px;border:1px solid var(--row-line);background:var(--row);font-size:13px;color:var(--muted)}
+.netbar{background:var(--flame);color:#fff;text-align:center;font-size:12.5px;font-weight:600;padding:7px 16px;letter-spacing:.01em}
+.netbar a{color:#fff;text-decoration:underline;text-underline-offset:2px}
+.exlink{display:inline-flex;align-items:center;gap:4px;color:var(--faint);text-decoration:none}
+.exlink:hover{color:var(--text2)}
+.feeline{display:flex;flex-wrap:wrap;gap:4px 10px;margin:14px 0 0;font-size:13px;color:var(--muted)}
+.feeline b{color:var(--text2);font-weight:600}
+.pill.wait.pend{background:color-mix(in srgb,var(--flame) 16%,transparent);color:var(--flame)}
 footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--faint)}
 [hidden]{display:none!important}
 </style>
 </head>
 <body>
 <header>
+  <div class="netbar" role="status">Devnet — test SOL, no real value. Bets settle on the ibet escrow program.</div>
   <div class="wrap nav">
     <button class="logo" data-go="bet" aria-label="ibet home">ibet</button>
     <nav class="links" aria-label="Main">
@@ -339,18 +347,387 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
 </main>
 
 <footer class="wrap">
-  <span>ibet beta · play money only · balances are demo SOL, not real funds</span>
+  <span>ibet beta · Solana devnet · stakes are test SOL with no real value</span>
   <span>Any Solana token by CA · check the chart before you bet.</span>
 </footer>
 
 <div id="modalRoot"></div>
 <div id="toastRoot"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.98.4/lib/index.iife.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
 <script>
 (function(){
   'use strict';
-  var START = 10;
+  // ── chain config ──────────────────────────────────────────────────────────
+  // Going to mainnet is a change to these three values plus a mainnet deploy of
+  // the same program; nothing below this block knows which cluster it is on.
+  var CHAIN = {
+    cluster:   'devnet',
+    rpcUrl:    'https://api.devnet.solana.com',
+    programId: 'GACUebjQB1zZWuQW3pkhQLzYJL9yMtU8dX4TsfRyugq1'
+  };
+
+  var LAMPORTS = 1e9;
+  var w3 = window.solanaWeb3 || null;
+  var PROGRAM_ID = null, conn = null;
+  if(w3){
+    try{
+      PROGRAM_ID = new w3.PublicKey(CHAIN.programId);
+      conn = new w3.Connection(CHAIN.rpcUrl, 'confirmed');
+    }catch(e){ if(window.console) console.error('ibet: bad chain config', e); }
+  }
+  function explorer(kind, id){ return 'https://explorer.solana.com/'+kind+'/'+id+'?cluster='+CHAIN.cluster; }
+
+  // Anchor discriminators and account sizes, taken from
+  // program/target/idl/ibet_escrow.json. The Rust test
+  // `the_account_sizes_the_frontend_hardcodes_still_hold` fails if the layout
+  // moves underneath these.
+  var IX = {
+    createBet:     [197,42,153,2,59,63,143,246],
+    takeBet:       [207,80,174,65,3,89,181,188],
+    cancelBet:     [17,248,130,128,153,227,231,9],
+    settleBet:     [115,55,234,177,227,4,10,67],
+    refundExpired: [118,153,164,244,40,128,242,250]
+  };
+  var ACC_BET = [147,23,35,59,15,75,155,32];
+  var EV = {
+    settled:  [57,145,224,160,62,119,227,206],
+    refunded: [32,234,173,102,106,4,2,203]
+  };
+  var BET_SIZE = 213, CONFIG_SIZE = 132;
+  var STATUS = ['open','matched','settled','cancelled','refunded'];
+
+  // Program errors, from the IDL. Anything not listed falls back to a generic
+  // message, so an unmapped code never shows a raw number to the user.
+  var CHAIN_ERR = {
+    6000:'Betting is paused right now.',
+    6004:'That stake is outside the allowed range.',
+    6005:'That timeframe isn’t one of the allowed ones.',
+    6006:'The target market cap has to be above zero.',
+    6007:'Pick Higher or Lower first.',
+    6008:'That target doesn’t match your Higher/Lower call.',
+    6009:'That bet is no longer open — someone beat you to it.',
+    6010:'That bet isn’t live, so it can’t be settled.',
+    6011:'You can’t take your own bet.',
+    6012:'Only the creator can cancel this bet.',
+    6013:'Only the resolver wallet can settle bets.',
+    6014:'Only the admin wallet can do that.',
+    6015:'That bet hasn’t reached its deadline yet.',
+    6016:'The resolver’s window has passed — this one can only be refunded now.',
+    6017:'Too early to refund: the resolver still has time to settle.',
+    6021:'Arithmetic overflow.',
+    6022:'The escrow doesn’t hold enough SOL.'
+  };
+
+  // ── borsh ────────────────────────────────────────────────────────────────
+  function Buf(){ this.b=[]; }
+  Buf.prototype.disc=function(d){ for(var i=0;i<8;i++) this.b.push(d[i]); return this; };
+  Buf.prototype.u8=function(v){ this.b.push(v & 255); return this; };
+  Buf.prototype.u64=function(v){
+    var n=BigInt(v);
+    for(var i=0;i<8;i++){ this.b.push(Number(n & 255n)); n >>= 8n; }
+    return this;
+  };
+  Buf.prototype.i64=Buf.prototype.u64;  // BigInt shifts are two's complement
+  Buf.prototype.key=function(k){
+    var a=new w3.PublicKey(k).toBytes();
+    for(var i=0;i<32;i++) this.b.push(a[i]);
+    return this;
+  };
+  Buf.prototype.out=function(){ return Uint8Array.from(this.b); };
+
+  function Rd(bytes){ this.a = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes); this.o=0; }
+  Rd.prototype.take=function(n){ var s=this.a.subarray(this.o,this.o+n); this.o+=n; return s; };
+  Rd.prototype.u8=function(){ return this.a[this.o++]; };
+  Rd.prototype.u16=function(){ var v=this.a[this.o]|(this.a[this.o+1]<<8); this.o+=2; return v; };
+  Rd.prototype.big=function(){
+    var n=0n;
+    for(var i=7;i>=0;i--) n=(n<<8n)|BigInt(this.a[this.o+i]);
+    this.o+=8; return n;
+  };
+  Rd.prototype.u64=function(){ return Number(this.big()); };
+  Rd.prototype.i64=function(){ var n=this.big(); if(n >= (1n<<63n)) n -= (1n<<64n); return Number(n); };
+  Rd.prototype.bool=function(){ return !!this.u8(); };
+  Rd.prototype.key=function(){ return new w3.PublicKey(this.take(32)).toBase58(); };
+  Rd.prototype.optKey=function(){ return this.u8() ? this.key() : null; };
+  Rd.prototype.disc=function(){ return Array.prototype.slice.call(this.take(8)); };
+  function sameDisc(a,b){ for(var i=0;i<8;i++) if(a[i]!==b[i]) return false; return true; }
+  function b64(s){ var bin=atob(s), a=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) a[i]=bin.charCodeAt(i); return a; }
+  function seed(s){ return new TextEncoder().encode(s); }
+
+  // ── addresses ────────────────────────────────────────────────────────────
+  var _cfgPda=null;
+  function configPda(){
+    if(!_cfgPda) _cfgPda = w3.PublicKey.findProgramAddressSync([seed('config')], PROGRAM_ID)[0];
+    return _cfgPda;
+  }
+  function betPda(creator, betId){
+    return w3.PublicKey.findProgramAddressSync(
+      [seed('bet'), new w3.PublicKey(creator).toBytes(), new Buf().u64(betId).out()],
+      PROGRAM_ID
+    )[0];
+  }
+
+  // ── on-chain config ──────────────────────────────────────────────────────
+  var CFG = null;
+  function loadConfig(){
+    if(!conn) return Promise.resolve(null);
+    return conn.getAccountInfo(configPda()).then(function(ai){
+      if(!ai || ai.data.length !== CONFIG_SIZE) return null;
+      var r=new Rd(ai.data); r.disc();
+      CFG = { admin:r.key(), resolver:r.key(), feeWallet:r.key(), feeBps:r.u16(),
+              minStake:r.u64(), maxStake:r.u64(), graceSecs:r.i64(), paused:r.bool() };
+      return CFG;
+    }).catch(function(){ return null; });
+  }
+  function feeBps(){ return CFG ? CFG.feeBps : 0; }
+  function graceMs(){ return (CFG ? CFG.graceSecs : 0) * 1000; }
+  function minStake(){ return CFG ? CFG.minStake/LAMPORTS : 0; }
+  function maxStake(){ return CFG ? CFG.maxStake/LAMPORTS : Infinity; }
+  // Pot, fee and winner's take for a stake in SOL, all computed the way the
+  // program does it: in lamports, rounding the fee down.
+  function split(stakeSol){
+    var pot = Math.round(stakeSol*LAMPORTS)*2;
+    var fee = Math.floor(pot*feeBps()/10000);
+    return { pot:pot/LAMPORTS, fee:fee/LAMPORTS, win:(pot-fee)/LAMPORTS };
+  }
+  function feeText(stakeSol){
+    var s=split(stakeSol);
+    return 'Pot <b>'+fmtSol(s.pot)+'</b>'+
+      '<span>·</span><span>'+(feeBps()/100)+'% fee <b>'+fmtSol(s.fee)+'</b></span>'+
+      '<span>·</span><span>Winner gets <b>'+fmtSol(s.win)+'</b></span>';
+  }
+
+  // ── instructions ─────────────────────────────────────────────────────────
+  function metas(rows){
+    return rows.map(function(m){
+      return { pubkey:new w3.PublicKey(m[0]), isSigner:!!m[1], isWritable:!!m[2] };
+    });
+  }
+  function ix(keys, data){
+    return new w3.TransactionInstruction({ programId:PROGRAM_ID, keys:metas(keys), data:data });
+  }
+  var SYS = '11111111111111111111111111111111';
+
+  function ixCreateBet(creator, a){
+    var pda = betPda(creator, a.betId);
+    var data = new Buf().disc(IX.createBet)
+      .u64(a.betId).key(a.ca).u8(a.dir==='above'?0:1)
+      .u64(a.target).u64(a.startMc||0).u64(Math.round(a.stake*LAMPORTS)).i64(a.days*86400)
+      .out();
+    return { ix: ix([[creator,1,1],[configPda(),0,0],[pda,0,1],[SYS,0,0]], data), pda: pda.toBase58() };
+  }
+  function ixTakeBet(taker, pda){
+    return ix([[taker,1,1],[configPda(),0,0],[pda,0,1],[SYS,0,0]], new Buf().disc(IX.takeBet).out());
+  }
+  function ixCancelBet(creator, pda){
+    return ix([[creator,1,1],[pda,0,1]], new Buf().disc(IX.cancelBet).out());
+  }
+  function ixSettleBet(resolver, b, finalMc){
+    var data = new Buf().disc(IX.settleBet).u64(Math.round(finalMc)).out();
+    return ix([[resolver,1,1],[configPda(),0,0],[b.pda,0,1],[b.creator,0,1],[b.taker,0,1],[CFG.feeWallet,0,1]], data);
+  }
+  function ixRefund(caller, b){
+    return ix([[caller,1,1],[configPda(),0,0],[b.pda,0,1],[b.creator,0,1],[b.taker,0,1]],
+      new Buf().disc(IX.refundExpired).out());
+  }
+
+  // ── sending ──────────────────────────────────────────────────────────────
+  function chainErr(e){
+    var hay = String((e && e.message) || e || '') + ' ' + JSON.stringify((e && e.logs) || []);
+    if(/reject|cancel|denied|declined|User rejected/i.test(hay)) return null;   // user backed out
+    var m = /custom program error: 0x([0-9a-fA-F]+)/.exec(hay) || /"Custom":\s*(\d+)/.exec(hay);
+    if(m){
+      var code = m[0].indexOf('0x')>-1 ? parseInt(m[1],16) : parseInt(m[1],10);
+      return CHAIN_ERR[code] || ('The program rejected that (error '+code+').');
+    }
+    if(/insufficient lamports|insufficient funds|Attempt to debit/i.test(hay)) return 'Not enough devnet SOL in your wallet for that.';
+    if(/blockhash not found|block height exceeded/i.test(hay)) return 'That took too long to confirm. Try again.';
+    if(/already in use/i.test(hay)) return 'That bet already exists. Try again.';
+    return 'That didn’t go through on chain. Try again.';
+  }
+
+  // Signs with the connected wallet, sends, and waits for confirmation.
+  function sendTx(instructions, pendingMsg){
+    var prov = walletProvider();
+    if(!conn || !w3) return Promise.reject(new Error('Solana library did not load'));
+    if(!prov || !S.me) return Promise.reject(new Error('Wallet not connected'));
+    var tx = new w3.Transaction();
+    instructions.forEach(function(i){ tx.add(i); });
+    tx.feePayer = new w3.PublicKey(S.me);
+    var bh;
+    return conn.getLatestBlockhash('confirmed').then(function(r){
+      bh = r;
+      tx.recentBlockhash = r.blockhash;
+      if(pendingMsg) toast(pendingMsg);
+      if(typeof prov.signAndSendTransaction === 'function'){
+        return prov.signAndSendTransaction(tx).then(function(x){ return (x && x.signature) ? x.signature : x; });
+      }
+      return prov.signTransaction(tx).then(function(signed){ return conn.sendRawTransaction(signed.serialize()); });
+    }).then(function(sig){
+      return conn.confirmTransaction(
+        { signature:sig, blockhash:bh.blockhash, lastValidBlockHeight:bh.lastValidBlockHeight },
+        'confirmed'
+      ).then(function(res){
+        if(res && res.value && res.value.err) throw new Error('Transaction failed: '+JSON.stringify(res.value.err));
+        return sig;
+      });
+    });
+  }
+
+  // ── reading live bets from the chain ─────────────────────────────────────
+  function decodeBet(pda, data){
+    if(data.length !== BET_SIZE) return null;
+    var r=new Rd(data);
+    if(!sameDisc(r.disc(), ACC_BET)) return null;
+    var b={ id:pda, pda:pda };
+    b.creator      = r.key();
+    b.taker        = r.optKey();
+    b.ca           = r.key();
+    b.dir          = r.u8()===0 ? 'above' : 'below';
+    b.target       = r.u64();
+    var startMc    = r.u64();
+    b.startMc      = startMc>0 ? startMc : null;
+    b.stakeLam     = r.u64();
+    var durSecs    = r.i64();
+    b.createdAt    = r.i64()*1000;
+    b.takenAt      = r.i64()*1000 || null;
+    b.expiresAt    = r.i64()*1000 || null;
+    b.status       = STATUS[r.u8()] || 'open';
+    b.winner       = r.optKey();
+    var finalMc    = r.u64();
+    b.finalMc      = finalMc>0 ? finalMc : null;
+    b.betId        = r.u64();
+    b.stake        = b.stakeLam/LAMPORTS;
+    b.days         = Math.round(durSecs/86400);
+    b.ticker       = tickerFor(b.ca);
+    return b;
+  }
+  // The on-chain Bet has no ticker field — only the coin's address — so a
+  // ticker typed for a coin that isn't on the trending list is remembered in
+  // this browser alone. Everyone else sees the shortened address.
+  var TICKERS_KEY='ibet.tickers.v1', TICKERS={};
+  function tickersRead(){
+    try{ var j=JSON.parse(localStorage.getItem(TICKERS_KEY)||'{}'); if(j && typeof j==='object') TICKERS=j; }catch(_){}
+  }
+  function tickerRemember(ca, t){
+    if(!ca || !t) return;
+    TICKERS[ca]=String(t).toUpperCase().slice(0,10);
+    try{ localStorage.setItem(TICKERS_KEY, JSON.stringify(TICKERS)); }catch(_){}
+  }
+  function tickerFor(ca){ var t=findTrend(ca); return t ? t.ticker : (TICKERS[ca] || ''); }
+
+  function loadChainBets(){
+    if(!conn) return Promise.resolve([]);
+    return conn.getProgramAccounts(PROGRAM_ID, {
+      commitment:'confirmed',
+      filters:[{ dataSize: BET_SIZE }]
+    }).then(function(rows){
+      var out=[];
+      rows.forEach(function(row){
+        var b=null;
+        try{ b=decodeBet(row.pubkey.toBase58(), row.account.data); }catch(_){ b=null; }
+        if(b && (b.status==='open' || b.status==='matched')) out.push(b);
+      });
+      return out;
+    });
+  }
+
+  // ── settled history, read back from the program's own events ─────────────
+  // A settled bet's account is closed on chain, so its record only survives as
+  // the BetSettled event in that transaction's logs. We walk the program's
+  // signatures once and keep what we decoded in localStorage, so later loads
+  // only have to fetch signatures newer than the last one we saw.
+  //
+  // The limit of this approach is RPC log retention: a public devnet node
+  // prunes old ledger, so a first-time visitor sees only recent history.
+  // Phase 2 wants a proper indexer (or a Supabase mirror written after each
+  // confirmed tx) if the leaderboard has to be complete for everyone.
+  var HIST = { settled:[], refunded:[], newest:null };
+  var HIST_KEY = 'ibet.hist.v2.'+CHAIN.cluster+'.'+CHAIN.programId;
+  var HIST_KEEP = 300, SIG_PAGE = 200, TX_CHUNK = 20;
+
+  function histRead(){
+    try{
+      var j=JSON.parse(localStorage.getItem(HIST_KEY)||'null');
+      if(j && Array.isArray(j.settled)){ HIST.settled=j.settled; HIST.refunded=j.refunded||[]; HIST.newest=j.newest||null; }
+    }catch(_){}
+  }
+  function histWrite(){
+    try{
+      localStorage.setItem(HIST_KEY, JSON.stringify({
+        settled:HIST.settled.slice(-HIST_KEEP), refunded:HIST.refunded.slice(-HIST_KEEP), newest:HIST.newest
+      }));
+    }catch(_){}
+  }
+  function addOnce(list, item){
+    for(var i=0;i<list.length;i++) if(list[i].pda===item.pda) return false;
+    list.push(item); return true;
+  }
+  function readSettled(r){
+    return { pda:r.key(), creator:r.key(), taker:r.key(), betId:r.u64(), winner:r.key(), ca:r.key(),
+             dirNum:r.u8(), target:r.u64(), finalMc:r.u64(), stake:r.u64(), fee:r.u64(), payout:r.u64(),
+             settledAt:r.i64() };
+  }
+  function readRefunded(r){
+    return { pda:r.key(), creator:r.key(), taker:r.key(), betId:r.u64(), stake:r.u64(), refundedAt:r.i64() };
+  }
+  function absorbLogs(logs){
+    var got=false;
+    (logs||[]).forEach(function(line){
+      var m=/^Program data: (.+)$/.exec(line);
+      if(!m) return;
+      var bytes; try{ bytes=b64(m[1].trim()); }catch(_){ return; }
+      if(bytes.length<8) return;
+      var r=new Rd(bytes), d=r.disc();
+      try{
+        if(sameDisc(d,EV.settled)) got = addOnce(HIST.settled, readSettled(r)) || got;
+        else if(sameDisc(d,EV.refunded)) got = addOnce(HIST.refunded, readRefunded(r)) || got;
+      }catch(_){}
+    });
+    return got;
+  }
+  function scanHistory(){
+    if(!conn) return Promise.resolve(false);
+    var opts={ limit:SIG_PAGE };
+    if(HIST.newest) opts.until = HIST.newest;
+    return conn.getSignaturesForAddress(PROGRAM_ID, opts, 'confirmed').then(function(sigs){
+      if(!sigs || !sigs.length) return false;
+      var newest = sigs[0].signature;
+      var wanted = sigs.filter(function(s){ return !s.err; }).map(function(s){ return s.signature; });
+      var chain = Promise.resolve(false);
+      for(var i=0;i<wanted.length;i+=TX_CHUNK){
+        (function(batch){
+          chain = chain.then(function(changed){
+            return conn.getTransactions(batch, { commitment:'confirmed', maxSupportedTransactionVersion:0 })
+              .then(function(txs){
+                (txs||[]).forEach(function(tx){
+                  if(tx && tx.meta && !tx.meta.err && absorbLogs(tx.meta.logMessages)) changed=true;
+                });
+                return changed;
+              }, function(){ return changed; });
+          });
+        })(wanted.slice(i,i+TX_CHUNK));
+      }
+      return chain.then(function(changed){
+        HIST.newest = newest;
+        HIST.settled.sort(function(a,b){ return a.settledAt-b.settledAt; });
+        histWrite();
+        return changed;
+      });
+    }, function(){ return false; });
+  }
+  // A settled event, shaped like the rows the list renders.
+  function settledRow(e){
+    return { id:e.pda, pda:e.pda, ca:e.ca, ticker:tickerFor(e.ca),
+             dir:e.dirNum===0?'above':'below', target:e.target, startMc:null,
+             stake:e.stake/LAMPORTS, stakeLam:e.stake, days:0,
+             creator:e.creator, taker:e.taker, status:'settled', winner:e.winner,
+             finalMc:e.finalMc, fee:e.fee, payout:e.payout,
+             createdAt:e.settledAt*1000, settledAt:e.settledAt*1000, expiresAt:e.settledAt*1000 };
+  }
+
   var CA_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
   var TICK_RE = /^[A-Za-z0-9]{1,10}$/;
   function coinColor(ca){ var h=0; for(var i=0;i<ca.length;i++) h=(h*31+ca.charCodeAt(i))>>>0; return 'hsl('+(h%360)+' 62% 66%)'; }
@@ -370,7 +747,10 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   }
   function badge(b){ return (b.ticker ? b.ticker.toUpperCase() : b.ca).slice(0,4); }
 
-  var S = { bets:[], me:null, owner:false, names:{}, tab:'open', view:'bet', coin:'', dir:'above', mode:'loading', busy:{}, wallet:null };
+  // me = the connected wallet address (identities are wallets now, not rows);
+  // uid = the Supabase user id, only used for the admin-only trending list.
+  var S = { bets:[], me:null, uid:null, owner:false, canResolve:false, bal:0, names:{},
+            tab:'open', view:'bet', coin:'', dir:'above', mode:'loading', busy:{}, wallet:null };
   var $ = function(id){ return document.getElementById(id); };
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
@@ -393,18 +773,12 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     var d=Math.floor(ms/864e5), h=Math.floor(ms%864e5/36e5), m=Math.floor(ms%36e5/6e4);
     return d>0 ? d+'d '+h+'h left' : (h>0 ? h+'h '+m+'m left' : m+'m left');
   }
-  function nameOf(id){ if(!id) return ''; if(id===S.me) return 'You'; return S.names[id] || ('Player '+String(id).slice(0,4)); }
+  function nameOf(id){ if(!id) return ''; if(id===S.me) return 'You'; return S.names[id] || shortCa(id); }
   function initials(id){
     if(id===S.me) return 'You';
     var n=S.names[id]; if(!n) return String(id).slice(0,2).toUpperCase();
     if(/^[1-9A-HJ-NP-Za-km-z]{2}/.test(n) && n.indexOf('…')>0) return n.slice(0,2);
     var p=n.trim().split(/\s+/); return ((p[0]||'')[0]+((p[1]||'')[0]||'')).toUpperCase();
-  }
-  function valid(b){
-    return b && typeof b.ca==='string' && CA_RE.test(b.ca) && (!b.ticker || TICK_RE.test(b.ticker)) &&
-      (b.dir==='above'||b.dir==='below') && isFinite(b.target) && b.target>0 &&
-      isFinite(b.stake) && b.stake>0 && isFinite(b.days) && b.days>0 && typeof b.creator==='string' &&
-      ['open','matched','settled'].indexOf(b.status)>-1;
   }
   function toast(msg){
     var t=document.createElement('div'); t.className='toast'; t.setAttribute('role','status'); t.textContent=msg;
@@ -412,21 +786,31 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     clearTimeout(toast._t); toast._t=setTimeout(function(){ if(t.parentNode) t.parentNode.removeChild(t); },3400);
   }
 
-  // ── balances ──
+  // ── balance and record ──
+  // The spendable balance is simply the wallet's own devnet SOL.
+  function available(){ return S.bal; }
+  function loadBalance(){
+    if(!conn || !S.me) { S.bal=0; return Promise.resolve(0); }
+    return conn.getBalance(new w3.PublicKey(S.me), 'confirmed').then(function(lam){
+      S.bal = lam/LAMPORTS; renderTop(); return S.bal;
+    }, function(){ return S.bal; });
+  }
+  // Win/loss and profit come from settled bets, so the fee is part of the
+  // number; "in play" comes from the bets still open or live on chain.
   function ledger(){
     var P={};
     function p(id){ if(!P[id]) P[id]={id:id,net:0,locked:0,won:0,lost:0}; return P[id]; }
+    HIST.settled.forEach(function(e){
+      var loser = e.winner===e.creator ? e.taker : e.creator;
+      p(e.winner).net += (e.payout - e.stake)/LAMPORTS; p(e.winner).won++;
+      p(loser).net -= e.stake/LAMPORTS; p(loser).lost++;
+    });
     S.bets.forEach(function(b){
       if(b.status==='open'){ p(b.creator).locked+=b.stake; }
       else if(b.status==='matched'){ p(b.creator).locked+=b.stake; if(b.taker) p(b.taker).locked+=b.stake; }
-      else if(b.status==='settled' && b.taker){
-        var loser = b.winner===b.creator ? b.taker : b.creator;
-        p(b.winner).net+=b.stake; p(b.winner).won++; p(loser).net-=b.stake; p(loser).lost++;
-      }
     });
     return P;
   }
-  function available(id){ var L=ledger()[id]; return L ? START+L.net-L.locked : START; }
 
   // ── icons ──
   var IC = {
@@ -482,21 +866,26 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       } else {
         who = '<div class="ava" aria-hidden="true">'+esc(initials(b.taker))+'</div><div class="stack"><span class="t">'+fmtSol(b.stake)+'</span><span class="s">'+esc(nameOf(b.creator))+' vs '+esc(nameOf(b.taker))+'</span></div>';
       }
-      var act='';
+      var act='', busy=!!S.busy[b.id];
       if(b.status==='open'){
-        if(mineC) act='<button class="wbtn ghost" data-act="cancel" data-id="'+esc(b.id)+'">Cancel</button>';
-        else act='<button class="wbtn" data-act="take" data-id="'+esc(b.id)+'"'+(S.busy[b.id]?' disabled':'')+'>Take Bet</button>';
+        if(mineC) act='<button class="wbtn ghost" data-act="cancel" data-id="'+esc(b.id)+'"'+(busy?' disabled':'')+'>'+(busy?'Cancelling…':'Cancel')+'</button>';
+        else act='<button class="wbtn" data-act="take" data-id="'+esc(b.id)+'"'+(busy?' disabled':'')+'>'+(busy?'Taking…':'Take Bet')+'</button>';
       } else if(b.status==='matched'){
-        var ended=b.expiresAt<=now;
-        if(S.owner) act='<button class="wbtn'+(ended?'':' ghost')+'" data-act="resolve" data-id="'+esc(b.id)+'">Resolve</button>';
-        else act='<span class="pill wait">'+(ended?'Awaiting result':(mineC||mineT?'Live':'Matched'))+'</span>';
+        var ended=b.expiresAt<=now, canRefund=refundable(b);
+        if(canRefund && (mineC||mineT||S.canResolve)) act='<button class="wbtn" data-act="refund" data-id="'+esc(b.id)+'"'+(busy?' disabled':'')+'>'+(busy?'Refunding…':'Refund')+'</button>';
+        else if(S.canResolve) act='<button class="wbtn'+(ended?'':' ghost')+'" data-act="resolve" data-id="'+esc(b.id)+'"'+(busy?' disabled':'')+'>'+(busy?'Settling…':'Resolve')+'</button>';
+        else act='<span class="pill wait'+(canRefund?' pend':'')+'">'+(canRefund?'Refundable':(ended?'Awaiting result':(mineC||mineT?'Live':'Matched')))+'</span>';
       } else {
-        if(mineC||mineT) act = b.winner===S.me ? '<span class="pill win">Won +'+fmtSol(b.stake)+'</span>' : '<span class="pill lose">Lost</span>';
+        // The pot minus the platform fee, so "won" is what actually landed.
+        var gain = (b.payout!=null && b.stakeLam!=null) ? (b.payout-b.stakeLam)/LAMPORTS : b.stake;
+        if(b.winner===S.me) act='<span class="pill win">Won +'+fmtSol(gain)+'</span>';
+        else if(mineC||mineT) act='<span class="pill lose">Lost</span>';
         else act='<span class="pill win">'+esc(nameOf(b.winner))+' won</span>';
       }
       var side = b.dir==='above' ? 'Market cap' : 'Market cap';
       return '<article class="row" aria-label="'+esc(label(b)+(b.dir==='above'?' above ':' below ')+fmtCap(b.target)+' market cap')+'">'+
-        '<div class="cell">'+coinAva(b.ca, badge(b))+'<div class="stack"><span class="t">'+esc(label(b))+'</span><span class="s ca"><button type="button" class="cabtn" data-copy="'+esc(b.ca)+'" aria-label="Copy contract address">'+esc(shortCa(b.ca))+'</button><a href="https://dexscreener.com/solana/'+esc(b.ca)+'" target="_blank" rel="noopener noreferrer" aria-label="Open chart on DexScreener">'+IC.ext+'</a></span></div></div>'+
+        '<div class="cell">'+coinAva(b.ca, badge(b))+'<div class="stack"><span class="t">'+esc(label(b))+'</span><span class="s ca"><button type="button" class="cabtn" data-copy="'+esc(b.ca)+'" aria-label="Copy contract address">'+esc(shortCa(b.ca))+'</button><a href="https://dexscreener.com/solana/'+esc(b.ca)+'" target="_blank" rel="noopener noreferrer" aria-label="Open chart on DexScreener">'+IC.ext+'</a>'+
+        '<a class="exlink" href="'+esc(explorer('address',b.pda))+'" target="_blank" rel="noopener noreferrer" aria-label="View this bet\u2019s escrow account on Solana Explorer">escrow '+IC.ext+'</a></span></div></div>'+
         '<div class="cell" style="gap:14px">'+arrow(b.dir)+'<div class="stack" style="gap:2px"><span class="t big">'+fmtCap(b.target)+'</span><span class="s sm">'+(b.dir==='above'?'Higher':'Lower')+(isFinite(b.startMc)&&b.startMc>0?' · from '+fmtCap(b.startMc):' market cap')+'</span></div></div>'+
         '<div class="cell time" style="gap:16px">'+IC.clock+'<span class="days">'+esc(when)+'</span></div>'+
         '<div class="vs" aria-hidden="true"><i></i><span>VS</span><i></i></div>'+
@@ -517,12 +906,27 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     }).join('');
   }
   function renderTop(){
-    var bal = S.me ? '<b>'+fmtSol(available(S.me))+'</b> demo' : '';
-    $('balpill').innerHTML=bal; $('balpill2').innerHTML = S.me ? 'Balance <b>'+fmtSol(available(S.me))+'</b>' : '';
+    var bal = S.me ? '<b>'+fmtSol(available())+'</b> devnet SOL' : '';
+    $('balpill').innerHTML=bal;
+    $('balpill2').innerHTML = S.me ? 'Wallet <b>'+fmtSol(available())+'</b>' : '';
     $('walletLbl').textContent = S.me ? (S.wallet ? shortCa(S.wallet) : 'Connected') : 'Connect Wallet';
     $('heroCta').textContent = S.me ? 'Create a bet' : 'Connect Wallet';
     var b=$('banner');
-    b.hidden=true;
+    if(!conn){
+      b.hidden=false;
+      b.textContent='Couldn’t load the Solana library, so bets can’t be read or placed. Reload to try again.';
+    } else if(!CFG){
+      b.hidden=false;
+      b.textContent='The escrow program isn’t initialised on '+CHAIN.cluster+' yet, so bets can’t be placed.';
+    } else if(CFG.paused){
+      b.hidden=false;
+      b.textContent='New bets are paused. Existing ones can still be cancelled, settled or refunded.';
+    } else if(S.lastTx){
+      b.hidden=false;
+      b.innerHTML='Last transaction confirmed · <a class="exlink" href="'+esc(explorer('tx',S.lastTx))+'" target="_blank" rel="noopener noreferrer">view on Solana Explorer '+IC.ext+'</a>';
+    } else {
+      b.hidden=true;
+    }
   }
   function render(){
     document.querySelectorAll('.links button').forEach(function(btn){
@@ -543,43 +947,46 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   }
   document.addEventListener('keydown',function(e){ if(e.key==='Escape' && $('modalRoot').innerHTML) closeModal(); });
 
-  // ── data (Supabase) ──
+  // ── data ──
+  // Bets live on chain and are never mirrored into a database. Supabase is
+  // still here for sign-in, the admins table and the trending coin list.
   var SB_URL='https://bryjuhrovcgeurtlysmt.supabase.co', SB_KEY='sb_publishable_l7GtFtA3m5e3f4ITD_jQ9w_I4ps3dC5';
   var sb = (window.supabase && window.supabase.createClient) ? window.supabase.createClient(SB_URL, SB_KEY) : null;
   function rpc(name,args){ return sb.rpc(name,args||{}).then(function(r){ if(r.error) throw r.error; return r.data; }); }
-  function ms(v){ return v ? Date.parse(v) : null; }
-  function toBet(r){
-    return { id:r.id, ca:r.ca, ticker:r.ticker||'', dir:r.dir, target:+r.target, startMc:r.start_mc!=null?+r.start_mc:null,
-      stake:+r.stake, days:+r.days, creator:r.creator, taker:r.taker, status:r.status, winner:r.winner,
-      finalMc:r.final_mc!=null?+r.final_mc:null, createdAt:ms(r.created_at), takenAt:ms(r.taken_at), expiresAt:ms(r.expires_at), settledAt:ms(r.settled_at) };
-  }
   function find(id){ for(var i=0;i<S.bets.length;i++) if(S.bets[i].id===id) return S.bets[i]; return null; }
+  // Supabase RPC failures (the trending list).
   function onWriteError(e){
     var m=String((e&&e.message)||'');
-    if(/not signed in|JWT|auth/i.test(m)){ toast('Connect your wallet first.'); }
-    else if(/insufficient balance/.test(m)) toast('Not enough balance for that stake.');
-    else if(/no longer open/.test(m)) toast('Someone beat you to it.');
-    else if(/own bet/.test(m)) toast('You can’t take your own bet.');
-    else if(/target must be/.test(m)) toast('That target doesn’t match your Higher/Lower call.');
+    if(/not signed in|JWT|auth/i.test(m)) toast('Sign in with your wallet first.');
     else if(/admins only/.test(m)) toast('Only admins can do that.');
     else toast('That didn’t go through. Try again.');
   }
-  var loadT=null;
+  // Program and wallet failures. A cancelled signature is not an error.
+  function onChainError(e){
+    if(window.console) console.error('ibet chain error:', e);
+    var m=chainErr(e);
+    if(m) toast(m);
+  }
   function loadBets(){
-    if(!sb) return;
-    sb.from('bets').select('*').order('created_at',{ascending:false}).limit(500).then(function(r){
-      if(r.error){ toast('Couldn’t load bets. Reload to retry.'); return; }
-      S.bets=(r.data||[]).map(toBet).filter(valid);
+    if(!conn){
+      S.mode='readonly'; render();
+      return Promise.resolve();
+    }
+    return loadChainBets().then(function(live){
+      S.bets = live.concat(HIST.settled.map(settledRow));
       if(S.mode==='loading') S.mode='live';
-      render(); loadNames();
+      render();
+    }, function(e){
+      if(window.console) console.error('ibet: could not read bets', e);
+      if(S.mode==='loading'){ S.mode='live'; render(); }
+      toast('Couldn’t reach the Solana RPC. Reload to retry.');
     });
   }
-  function queueLoad(){ clearTimeout(loadT); loadT=setTimeout(loadBets,250); }
-  function loadNames(){
-    var ids={}; S.bets.forEach(function(b){ [b.creator,b.taker,b.winner].forEach(function(x){ if(x && !S.names[x]) ids[x]=1; }); });
-    var list=Object.keys(ids); if(!list.length) return;
-    sb.from('profiles').select('id,wallet').in('id',list).then(function(r){
-      (r.data||[]).forEach(function(p){ S.names[p.id]= p.wallet ? shortCa(p.wallet) : ''; }); render();
+  // Everything that can have moved after a confirmed transaction.
+  function refreshAll(){
+    return Promise.all([loadBalance(), loadConfig(), scanHistory()]).then(function(){
+      S.canResolve = !!(S.me && CFG && CFG.resolver===S.me);
+      return loadBets();
     });
   }
   function loadTrending(){
@@ -596,23 +1003,53 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     });
   }
 
-  // ── wallet sign-in (Sign in with Solana, free, no transaction) ──
+  // ── wallet ──────────────────────────────────────────────────────────────
+  // The wallet address is the identity that matters: it is what the program
+  // stores on every bet. Supabase sign-in runs alongside it and is only needed
+  // for the admin-only trending list, so a failure there never blocks betting.
   function walletProvider(){ return (window.phantom && window.phantom.solana) || window.solflare || (window.solana || null); }
-  function afterAuth(session){
-    if(!session){ S.me=null; S.wallet=null; S.owner=false; render(); return; }
-    S.me=session.user.id;
-    rpc('ensure_profile').then(function(p){ S.wallet=p&&p.wallet||null; if(S.wallet) S.names[S.me]=shortCa(S.wallet); render(); }).catch(function(){});
-    sb.from('admins').select('user_id').eq('user_id',S.me).maybeSingle().then(function(r){ S.owner=!!(r&&r.data); render(); if(W.step===1) renderWizard(false); });
+
+  function setWallet(address){
+    S.me = address || null;
+    S.wallet = S.me;
+    if(S.me) S.names[S.me]=shortCa(S.me);
+    S.bal = 0;
+    S.canResolve = !!(S.me && CFG && CFG.resolver===S.me);
     render();
+    if(S.me) loadBalance();
   }
-  function signIn(){
-    if(!sb) return toast('Can\u2019t reach the server. Reload and try again.');
+
+  function connect(){
     var prov=walletProvider();
-    if(!prov){ toast('No Solana wallet found. Install Phantom, or open i-bet.fun in the Phantom app.'); window.open('https://phantom.com/download','_blank','noopener'); return; }
-    // Phantom (and other wallets with Sign In With Solana) build the sign-in message themselves.
-    // Only fall back to plain message signing for wallets without signIn().
+    if(!prov){
+      toast('No Solana wallet found. Install Phantom, or open i-bet.fun in the Phantom app.');
+      window.open('https://phantom.com/download','_blank','noopener');
+      return;
+    }
+    if(!conn) return toast('Couldn’t load the Solana library. Reload and try again.');
+    var already = prov.isConnected && prov.publicKey;
+    Promise.resolve(already ? { publicKey: prov.publicKey } : prov.connect()).then(function(r){
+      var pk = (r && r.publicKey) || prov.publicKey;
+      if(!pk) throw new Error('Wallet did not return an address');
+      setWallet(pk.toString());
+      toast('Wallet connected — devnet.');
+      supabaseSignIn(prov);
+      return loadBets();
+    }).catch(function(e){
+      var m=String((e&&e.message)||e||'');
+      if(window.console) console.error('ibet connect failed:', e);
+      if(/reject|cancel|denied|declined/i.test(m)) toast('Connection cancelled.');
+      else toast('Couldn’t connect: '+m.slice(0,120));
+    });
+  }
+
+  // Best effort, in the background: unlocks the admin trending editor.
+  function supabaseSignIn(prov){
+    if(!sb || S.uid) return;
+    // Phantom and other wallets with Sign In With Solana build the sign-in
+    // message themselves; only fall back to plain message signing without it.
     var useSignIn = typeof prov.signIn === 'function';
-    Promise.resolve(useSignIn || (prov.isConnected && prov.publicKey) ? null : prov.connect()).then(function(){
+    Promise.resolve(null).then(function(){
       var wallet = prov;
       if(!useSignIn){
         if(!prov.publicKey || typeof prov.signMessage!=='function') throw new Error('Wallet does not support message signing');
@@ -624,27 +1061,46 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       return sb.auth.signInWithWeb3({ chain:'solana', statement:'Sign in to ibet. Free, this sends no transaction.', wallet:wallet });
     }).then(function(r){
       if(r && r.error) throw r.error;
-      toast('Wallet connected. You start with '+START+' demo SOL.');
     }).catch(function(e){
-      var m=String((e&&e.message)||e||'');
-      if(window.console) console.error('ibet sign-in failed:', e);
-      if(/reject|cancel|denied|declined/i.test(m)) toast('Sign-in cancelled.');
-      else if(/provider.*(disabled|not enabled)|web3.*disabled/i.test(m)) toast('Wallet sign-in is not enabled on the server yet.');
-      else if(/uri|url|redirect|domain/i.test(m)) toast('This site address is not allowed for sign-in yet (Supabase URL settings).');
-      else toast('Couldn\u2019t sign in: '+m.slice(0,120));
+      if(window.console) console.warn('ibet: wallet sign-in skipped —', (e&&e.message)||e);
     });
   }
+
   function accountMenu(){
     openModal('<h3 id="mTitle">Your wallet</h3><p style="word-break:break-all">'+esc(S.wallet||'')+'</p>'+
-      '<div class="summary"><div><span>Balance</span><span>'+fmtSol(available(S.me))+'</span></div><div><span>Note</span><span>Demo SOL, not real funds</span></div></div>'+
+      '<div class="summary"><div><span>Balance</span><span>'+fmtSol(available())+'</span></div>'+
+      '<div><span>Network</span><span>Devnet — test SOL</span></div>'+
+      (S.canResolve?'<div><span>Role</span><span>Resolver</span></div>':'')+'</div>'+
+      '<p style="margin:0 0 18px;font-size:13px"><a class="exlink" href="'+esc(explorer('address',S.wallet||''))+'" target="_blank" rel="noopener noreferrer">View wallet on Solana Explorer '+IC.ext+'</a></p>'+
       '<div class="mact"><button class="wbtn ghost" id="signOut">Disconnect</button><button class="wbtn" data-close="1">Close</button></div>',
-      function(){ $('signOut').onclick=function(){ closeModal(); sb.auth.signOut().then(function(){ toast('Disconnected.'); }); }; });
+      function(){
+        $('signOut').onclick=function(){
+          closeModal();
+          var prov=walletProvider();
+          if(prov && typeof prov.disconnect==='function'){ try{ prov.disconnect(); }catch(_){} }
+          if(sb) sb.auth.signOut().catch(function(){});
+          S.uid=null; S.owner=false;
+          setWallet(null);
+          toast('Disconnected.');
+        };
+      });
   }
+
   function connectWallet(src){
-    if(!S.me) return signIn();
+    if(!S.me) return connect();
     if(src==='nav') return accountMenu();
     S.view='bet'; render(); $('createForm').scrollIntoView({behavior:'smooth',block:'start'});
     setTimeout(function(){ var f=$('wizBody').querySelector('input'); if(f) f.focus(); },450);
+  }
+
+  function afterAuth(session){
+    if(!session){ S.uid=null; S.owner=false; render(); return; }
+    S.uid=session.user.id;
+    rpc('ensure_profile').catch(function(){});
+    sb.from('admins').select('user_id').eq('user_id',S.uid).maybeSingle().then(function(r){
+      S.owner=!!(r&&r.data); render(); if(W.step===1) renderWizard(false);
+    }, function(){});
+    render();
   }
 
   // ── create wizard ──
@@ -739,7 +1195,9 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
           '<div><span>Your call</span><span style="color:var(--'+(W.dir==='above'?'green':'red')+')">'+(W.dir==='above'?'Higher than ':'Lower than ')+fmtCap(t)+(hasCur()?' <span style="font-weight:400">('+pctStr(t,wCur())+')</span>':'')+'</span></div>'+
           '<div><span>Timeframe</span><span>'+W.days+(W.days===1?' day':' days')+' <span style="color:var(--muted);font-weight:400">from when it’s taken</span></span></div>'+
           '<div><span>Your stake</span><span>'+fmtSol(st)+'</span></div>'+
-          '<div class="hl"><span>Winner takes</span><span>'+fmtSol(st*2)+'</span></div>'+
+          '<div><span>Pot</span><span>'+fmtSol(split(st).pot)+'</span></div>'+
+          '<div><span>Platform fee ('+(feeBps()/100)+'%)</span><span>'+fmtSol(split(st).fee)+'</span></div>'+
+          '<div class="hl"><span>Winner takes</span><span>'+fmtSol(split(st).win)+'</span></div>'+
         '</div>'+
         '<p class="whint" id="wHint3"></p>'+
         '<div class="wnav narrow"><button type="button" class="wbtn ghost" data-wstep="2">'+ARROW_L+' Back</button><button type="button" class="nextbtn" id="wCreate" data-wcreate="1">Create Bet '+ARROW_R+'</button></div></div>';
@@ -761,21 +1219,26 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       if($('wPct')) $('wPct').textContent = (isFinite(c)&&c>0&&isFinite(t)&&t>0) ? pctStr(t,c)+' from now' : '';
       if($('wLine')){
         $('wLine').innerHTML = (isFinite(t)&&t>0&&isFinite(st)&&st>0&&dirOk())
-          ? 'You win <b>'+fmtSol(st*2)+'</b> if it’s <b style="color:var(--'+(W.dir==='above'?'green':'red')+')">'+(W.dir==='above'?'above ':'below ')+fmtCap(t)+'</b> when '+W.days+(W.days===1?' day':' days')+' are up.'
+          ? 'You win <b>'+fmtSol(split(st).win)+'</b> if it’s <b style="color:var(--'+(W.dir==='above'?'green':'red')+')">'+(W.dir==='above'?'above ':'below ')+fmtCap(t)+'</b> when '+W.days+(W.days===1?' day':' days')+' are up.'
           : '';
       }
       document.querySelectorAll('[data-wmult]').forEach(function(b){ b.setAttribute('aria-pressed', String(+b.dataset.wmult===W.mult)); });
       if(W.dir && isFinite(t)&&t>0 && !dirOk()) msg = W.dir==='above' ? 'For “Higher”, the target has to be above '+fmtCap(c)+'.' : 'For “Lower”, the target has to be below '+fmtCap(c)+'.';
       else if(W.ticker && !TICK_RE.test(W.ticker)) msg='Ticker: letters and numbers only, max 10.';
-      else if(isFinite(st) && st>0 && S.me && st>available(S.me)+1e-9) msg='Heads up: you only have '+fmtSol(available(S.me))+' free.';
+      else if(isFinite(st) && st>0 && CFG && (st<minStake()-1e-9 || st>maxStake()+1e-9)) msg='Stake has to be between '+fmtSol(minStake())+' and '+fmtSol(maxStake())+'.';
+      else if(isFinite(st) && st>0 && S.me && st>available()+1e-9) msg='Heads up: you only have '+fmtSol(available())+' in your wallet.';
       $('wHint2').textContent=msg;
       document.querySelectorAll('[data-wstake]').forEach(function(b){ b.setAttribute('aria-pressed', String(+b.dataset.wstake===st)); });
     } else {
-      var ok3 = step1ok() && step2ok() && (!S.me || wStake()<=available(S.me)+1e-9);
+      var st3=wStake();
+      var inLimits = !CFG || (st3>=minStake()-1e-9 && st3<=maxStake()+1e-9);
+      var ok3 = step1ok() && step2ok() && inLimits && (!S.me || st3<=available()+1e-9);
       $('wCreate').classList.toggle('ready', ok3); $('wCreate').disabled=!ok3;
       $('wCreate').innerHTML = S.me ? 'Create Bet '+ARROW_R : 'Connect Wallet '+ARROW_R;
-      $('wHint3').textContent = !S.me ? 'Connect your wallet to create this bet. It’s free and sends no transaction.'
-        : (wStake()>available(S.me)+1e-9 ? 'Not enough balance — you have '+fmtSol(available(S.me))+' free.' : 'The taker matches your stake. The clock starts when someone takes it.');
+      $('wHint3').textContent = !S.me ? 'Connect your wallet to stake this bet on devnet.'
+        : (!inLimits ? 'Stake has to be between '+fmtSol(minStake())+' and '+fmtSol(maxStake())+'.'
+        : (st3>available()+1e-9 ? 'Not enough devnet SOL — you have '+fmtSol(available())+'.'
+        : 'Approving sends your stake into the escrow account. The taker matches it, and the clock starts then.'));
     }
   }
   function goStep(n){ W.step=n; renderWizard(true); }
@@ -845,60 +1308,119 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     W.dir=null; W.mult=null; W.target='';
   }
   function createBet(){
-    if(!S.me) return signIn();
+    if(!S.me) return connect();
     var t=wTarget(), st=wStake();
     if(!step1ok()||!step2ok()) return;
-    if(st>available(S.me)+1e-9) return toast('Not enough balance — you have '+fmtSol(available(S.me))+' free.');
+    if(!CFG) return toast('Still reading the escrow config — one moment.');
+    if(CFG.paused) return toast('New bets are paused right now.');
+    if(st<minStake()-1e-9 || st>maxStake()+1e-9) return toast('Stake has to be between '+fmtSol(minStake())+' and '+fmtSol(maxStake())+'.');
+    if(st>available()+1e-9) return toast('Not enough devnet SOL — you have '+fmtSol(available())+'.');
     $('wCreate').disabled=true;
-    rpc('create_bet',{p_ca:W.ca.trim(), p_ticker:W.ticker?W.ticker.toUpperCase():'', p_dir:W.dir, p_target:t, p_start_mc:hasCur()?wCur():null, p_days:W.days, p_stake:Math.round(st*1000)/1000}).then(function(){
-      loadBets();
+    var ca=W.ca.trim(), ticker=W.ticker;
+    // bet_id is part of the PDA seeds; the millisecond clock keeps it unique
+    // per wallet without needing to ask the chain what is already taken.
+    var built = ixCreateBet(S.me, {
+      betId: Date.now(), ca: ca, dir: W.dir,
+      target: Math.round(t), startMc: hasCur() ? Math.round(wCur()) : 0,
+      stake: st, days: W.days
+    });
+    sendTx([built.ix], 'Creating bet — approve in your wallet…').then(function(sig){
+      S.lastTx=sig;
+      tickerRemember(ca, ticker);
       W={step:1, ca:'', ticker:'', cur:'', dir:null, mult:null, target:'', days:7, stake:''};
-      S.tab='open'; S.coin=''; render(); renderWizard(false);
-      toast('Bet created. Waiting for a taker.');
+      S.tab='open'; S.coin='';
+      toast('Bet created and staked. Waiting for a taker.');
+      renderWizard(false);
       $('tabs').scrollIntoView({behavior:'smooth',block:'start'});
-    }, function(e){ onWriteError(e); wizMeta(); });
+      return refreshAll();
+    }).catch(onChainError).then(function(){
+      var b=$('wCreate'); if(b) b.disabled=false;
+      wizMeta();
+    });
   }
 
   // ── take ──
   function askTake(id){
     var b=find(id); if(!b) return;
-    if(!S.me) return signIn();
-    if(b.stake>available(S.me)+1e-9) return toast('Not enough balance — you have '+fmtSol(available(S.me))+' free.');
+    if(!S.me) return connect();
+    if(b.creator===S.me) return toast('You can’t take your own bet.');
+    if(b.stake>available()+1e-9) return toast('Not enough devnet SOL — you have '+fmtSol(available())+'.');
     var opp = b.dir==='above' ? 'doesn’t get above' : 'doesn’t drop below';
+    var sp = split(b.stake);
     openModal('<h3 id="mTitle">Take this bet?</h3><p>You win if <b>'+esc(label(b))+'</b> <span style="font-size:13px">('+esc(shortCa(b.ca))+')</span> '+opp+' <b>'+fmtCap(b.target)+'</b> market cap for '+b.days+(b.days===1?' day':' days')+'.</p>'+
-      '<div class="summary"><div><span>Your stake</span><span>'+fmtSol(b.stake)+'</span></div><div><span>Pot</span><span>'+fmtSol(b.stake*2)+'</span></div><div><span>Against</span><span>'+esc(nameOf(b.creator))+'</span></div></div>'+
+      '<div class="summary"><div><span>Your stake</span><span>'+fmtSol(b.stake)+'</span></div>'+
+      '<div><span>Pot</span><span>'+fmtSol(sp.pot)+'</span></div>'+
+      '<div><span>Platform fee ('+(feeBps()/100)+'%)</span><span>'+fmtSol(sp.fee)+'</span></div>'+
+      '<div class="hl"><span>Winner gets</span><span>'+fmtSol(sp.win)+'</span></div>'+
+      '<div><span>Against</span><span>'+esc(nameOf(b.creator))+'</span></div></div>'+
+      '<p style="margin:0 0 18px;font-size:13px;color:var(--muted)">Your stake moves into the escrow account as soon as you approve. Devnet SOL, no real value.</p>'+
       '<div class="mact"><button class="wbtn ghost" data-close="1">Not now</button><button class="wbtn" id="confirmTake">Take Bet</button></div>',
       function(){ $('confirmTake').onclick=function(){ closeModal(); take(id); }; });
   }
   function take(id){
+    var b=find(id); if(!b) return;
     S.busy[id]=true; renderList();
-    rpc('take_bet',{p_id:id}).then(function(){ delete S.busy[id]; loadBets(); toast('You’re in. Clock started.'); },
-      function(e){ delete S.busy[id]; render(); onWriteError(e); });
+    sendTx([ixTakeBet(S.me, b.pda)], 'Taking bet — approve in your wallet…').then(function(sig){
+      S.lastTx=sig;
+      toast('You’re in. Clock started.');
+      return refreshAll();
+    }).catch(onChainError).then(function(){ delete S.busy[id]; render(); });
   }
   function cancel(id){
     var b=find(id); if(!b||b.creator!==S.me||b.status!=='open') return;
-    rpc('cancel_bet',{p_id:id}).then(function(){ loadBets(); toast('Bet cancelled. Stake unlocked.'); }, onWriteError);
+    S.busy[id]=true; renderList();
+    sendTx([ixCancelBet(S.me, b.pda)], 'Cancelling — approve in your wallet…').then(function(sig){
+      S.lastTx=sig;
+      toast('Bet cancelled. Your stake is back in your wallet.');
+      return refreshAll();
+    }).catch(onChainError).then(function(){ delete S.busy[id]; render(); });
+  }
+  // Past expiry plus the resolver's grace window, anyone can unwind a live bet
+  // and both sides get their own stake back.
+  function refundable(b){
+    // Without the config we don't know the grace window, so never offer it.
+    return !!CFG && b.status==='matched' && !!b.expiresAt && Date.now() > b.expiresAt + graceMs();
+  }
+  function refund(id){
+    var b=find(id); if(!b || b.status!=='matched') return;
+    if(!refundable(b)) return toast('Not yet — the resolver still has time to settle this one.');
+    if(!S.me) return connect();
+    S.busy[id]=true; renderList();
+    sendTx([ixRefund(S.me, b)], 'Refunding — approve in your wallet…').then(function(sig){
+      S.lastTx=sig;
+      toast('Refunded. Both stakes went back, no fee taken.');
+      return refreshAll();
+    }).catch(onChainError).then(function(){ delete S.busy[id]; render(); });
   }
   function askResolve(id){
-    var b=find(id); if(!b||!S.owner) return;
-    var ended=b.expiresAt<=Date.now();
-    openModal('<h3 id="mTitle">Resolve '+esc(label(b))+'</h3><p><a href="https://dexscreener.com/solana/'+esc(b.ca)+'" target="_blank" rel="noopener noreferrer" style="word-break:break-all">'+esc(b.ca)+'</a></p><p>'+esc(nameOf(b.creator))+' bet it ends '+b.dir+' <b>'+fmtCap(b.target)+'</b>.'+(ended?'':' It hasn’t expired yet — only resolve early when testing.')+'</p>'+
+    var b=find(id); if(!b||!S.canResolve) return;
+    var now=Date.now(), ended=b.expiresAt<=now, sp=split(b.stake);
+    var note = !ended ? 'It hasn’t reached its deadline yet — the program will refuse to settle until it does.'
+             : (refundable(b) ? 'The grace window has passed, so the program will only allow a refund now.'
+             : 'Inside the resolver window.');
+    openModal('<h3 id="mTitle">Resolve '+esc(label(b))+'</h3><p><a href="https://dexscreener.com/solana/'+esc(b.ca)+'" target="_blank" rel="noopener noreferrer" style="word-break:break-all">'+esc(b.ca)+'</a></p><p>'+esc(nameOf(b.creator))+' bet it ends '+(b.dir==='above'?'above':'below')+' <b>'+fmtCap(b.target)+'</b>. '+esc(note)+'</p>'+
       '<div class="field"><div class="fbody"><label for="finalMc">Final market cap</label><div class="money"><span>$</span><input id="finalMc" inputmode="decimal" placeholder="e.g. 1.2B" autocomplete="off"></div></div></div>'+
-      '<p id="resPrev" style="min-height:22px;margin:0 0 18px"></p>'+
+      '<p id="resPrev" style="min-height:22px;margin:0 0 6px"></p>'+
+      '<p class="feeline" style="margin:0 0 18px">'+feeText(b.stake)+'</p>'+
       '<div class="mact"><button class="wbtn ghost" data-close="1">Cancel</button><button class="wbtn" id="confirmRes" disabled>Settle</button></div>',
       function(){
         var inp=$('finalMc');
         inp.oninput=function(){
           var v=parseCap(inp.value), ok=isFinite(v)&&v>0;
           $('confirmRes').disabled=!ok;
-          if(ok){ var cw = b.dir==='above' ? v>=b.target : v<=b.target; $('resPrev').textContent=(cw?nameOf(b.creator):nameOf(b.taker))+' wins '+fmtSol(b.stake*2)+'.'; }
+          if(ok){ var cw = b.dir==='above' ? v>=b.target : v<=b.target; $('resPrev').textContent=(cw?nameOf(b.creator):nameOf(b.taker))+' wins '+fmtSol(sp.win)+'.'; }
           else $('resPrev').textContent='';
         };
         $('confirmRes').onclick=function(){
           var v=parseCap(inp.value); if(!(v>0)) return;
           var cw = b.dir==='above' ? v>=b.target : v<=b.target;
           closeModal();
-          rpc('resolve_bet',{p_id:id,p_final_mc:v}).then(function(){ loadBets(); toast('Settled. '+nameOf(cw?b.creator:b.taker)+' takes the pot.'); }, onWriteError);
+          S.busy[id]=true; renderList();
+          sendTx([ixSettleBet(S.me, b, v)], 'Settling — approve in your wallet…').then(function(sig){
+            S.lastTx=sig;
+            toast('Settled. '+nameOf(cw?b.creator:b.taker)+' takes '+fmtSol(sp.win)+'.');
+            return refreshAll();
+          }).catch(onChainError).then(function(){ delete S.busy[id]; render(); });
         };
       });
   }
@@ -919,20 +1441,60 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     if(t.dataset.go){ var g=t.dataset.go; if(g==='leader') S.view='leader'; else { S.view='bet'; S.tab = g==='mine' ? 'mine' : (S.tab==='mine'?'open':S.tab); } render(); window.scrollTo({top:0,behavior:'smooth'}); return; }
     if(t.dataset.tab){ S.tab=t.dataset.tab; render(); return; }
     var id=t.dataset.id, a=t.dataset.act;
-    if(a==='take') askTake(id); else if(a==='cancel') cancel(id); else if(a==='resolve') askResolve(id);
+    if(a==='take') askTake(id); else if(a==='cancel') cancel(id); else if(a==='resolve') askResolve(id); else if(a==='refund') refund(id);
   });
   $('coinFilter').onchange=function(){ S.coin=this.value; renderTabs(); renderList(); };
   setInterval(function(){ if(S.bets.some(function(b){return b.status==='matched';})) renderList(); },30000);
 
   // ── boot ──
+  histRead(); tickersRead();
   render();
-  if(!sb){ S.mode='live'; render(); toast('Couldn’t load ibet. Check your connection and reload.'); }
-  else {
-    loadTrending(); loadBets();
+
+  if(!conn){
+    S.mode='readonly'; render();
+    toast('Couldn’t load the Solana library. Reload to try again.');
+  } else {
+    loadConfig().then(function(cfg){
+      if(!cfg && window.console) console.warn('ibet: no config account at', configPda().toBase58());
+      S.canResolve = !!(S.me && cfg && cfg.resolver===S.me);
+      render();
+      return loadBets();
+    }).then(function(){
+      return scanHistory();
+    }).then(function(changed){
+      if(changed) loadBets();
+    });
+
+    // Reconnect silently when the user has already trusted this site.
+    var prov=walletProvider();
+    if(prov){
+      if(typeof prov.on==='function'){
+        prov.on('accountChanged', function(pk){
+          S.uid=null; S.owner=false;
+          setWallet(pk ? pk.toString() : null);
+          loadBets();
+        });
+        prov.on('disconnect', function(){ S.uid=null; S.owner=false; setWallet(null); });
+      }
+      if(typeof prov.connect==='function'){
+        prov.connect({onlyIfTrusted:true}).then(function(r){
+          var pk=(r && r.publicKey) || prov.publicKey;
+          if(pk){ setWallet(pk.toString()); supabaseSignIn(prov); }
+        }).catch(function(){});
+      }
+    }
+
+    // The chain has no push channel here, so live state is polled. Bets every
+    // 20s; balance, config and settled history every two minutes.
+    setInterval(function(){ if(document.visibilityState!=='hidden') loadBets(); }, 20000);
+    setInterval(function(){ if(document.visibilityState!=='hidden') refreshAll(); }, 120000);
+  }
+
+  if(sb){
+    loadTrending();
     sb.auth.getSession().then(function(r){ afterAuth(r.data && r.data.session); });
     sb.auth.onAuthStateChange(function(ev, session){ if(ev==='SIGNED_IN'||ev==='SIGNED_OUT') setTimeout(function(){ afterAuth(session); },0); });
     sb.channel('ibet-live')
-      .on('postgres_changes',{event:'*',schema:'public',table:'bets'},queueLoad)
       .on('postgres_changes',{event:'*',schema:'public',table:'trending'},loadTrending)
       .subscribe();
   }

@@ -1,0 +1,12 @@
+{
+  "name": "ibet-escrow-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Command-line helpers for the ibet escrow program",
+  "scripts": {
+    "config": "node scripts/config.mjs"
+  },
+  "dependencies": {
+    "@solana/web3.js": "1.98.4"
+  }
+}

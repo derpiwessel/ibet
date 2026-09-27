@@ -1,0 +1,19 @@
+# Build output
+program/target/
+program/.anchor/
+program/node_modules/
+
+# Session tooling, not part of the project
+.claude/
+program/test-ledger/
+node_modules/
+
+# Keypairs never belong in the repo. The program keypair lives in
+# program/target/deploy/ and the deployer wallet in ~/.config/solana/ —
+# both must be backed up somewhere outside git.
+*-keypair.json
+*.keypair.json
+id.json
+.keys/
+
+.DS_Store

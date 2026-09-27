@@ -1,0 +1,3 @@
+# Vercel only serves the static site; the Solana program is built locally.
+program/
+.claude/
