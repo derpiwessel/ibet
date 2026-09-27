@@ -687,7 +687,66 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     TICKERS[ca]=String(t).toUpperCase().slice(0,10);
     try{ localStorage.setItem(TICKERS_KEY, JSON.stringify(TICKERS)); }catch(_){}
   }
-  function tickerFor(ca){ var t=findTrend(ca); return t ? t.ticker : (TICKERS[ca] || ''); }
+  // ── coin identity ────────────────────────────────────────────────────────
+  // Real logo, ticker and name per coin, resolved once by the token-meta
+  // function and cached in Supabase, so a visitor gets it on the first paint
+  // instead of every browser looking it up again.
+  var META = {}, metaQueue = [], metaTimer = null;
+  var META_FRESH_MS = 24*60*60*1000;
+
+  function ensureMeta(ca){
+    if(!CA_RE.test(ca||'')) return null;
+    if(META[ca] !== undefined) return META[ca];
+    META[ca] = null;
+    if(metaQueue.indexOf(ca) < 0) metaQueue.push(ca);
+    clearTimeout(metaTimer);
+    metaTimer = setTimeout(flushMeta, 60);
+    return null;
+  }
+
+  // Read the shared cache first; only what is missing or a day old goes to the
+  // function, which is the only thing allowed to write that cache.
+  function flushMeta(){
+    var batch = metaQueue.splice(0, 20);
+    if(!batch.length) return;
+    if(metaQueue.length) setTimeout(flushMeta, 400);
+
+    var cutoff = Date.now() - META_FRESH_MS;
+    var read = sb ? sb.from('token_meta').select('*').in('ca', batch)
+                  : Promise.resolve({ data: [] });
+    read.then(function(r){
+      var rows = (r && r.data) || [], byCa = {}, need = [];
+      rows.forEach(function(x){ byCa[x.ca] = x; });
+      batch.forEach(function(ca){
+        var row = byCa[ca];
+        if(row && Date.parse(row.updated_at) > cutoff) META[ca] = row;
+        else need.push(ca);
+      });
+      queueRerender();
+      if(need.length) resolveMeta(need);
+    }, function(){ resolveMeta(batch); });
+  }
+
+  function resolveMeta(list){
+    fetch(SB_URL+'/functions/v1/token-meta?ca='+list.join(','))
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){
+        var t = (j && j.tokens) || {};
+        list.forEach(function(ca){ if(t[ca]) META[ca] = t[ca]; });
+        queueRerender();
+      }, function(){});
+  }
+
+  function tickerFor(ca){
+    var m = ensureMeta(ca);
+    if(m && m.symbol) return m.symbol;
+    var t = findTrend(ca);
+    return t ? t.ticker : (TICKERS[ca] || '');
+  }
+  function nameFor(ca){
+    var m = META[ca];
+    return (m && m.name) || '';
+  }
 
   // ── live market caps ─────────────────────────────────────────────────────
   // Market cap is price × total supply — the same definition the keeper uses
@@ -872,8 +931,8 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     el.innerHTML =
       '<div class="cc-head">'+
         '<div class="cc-id">'+
-          '<div class="cc-logo">'+coinAva(ca, (tickerFor(ca)||shortCa(ca)).slice(0,4))+'</div>'+
-          '<div class="cc-names"><b class="cc-pair">'+esc(tickerFor(ca)||shortCa(ca))+'</b>'+
+          '<div class="cc-logo">'+coinAva(ca, (tickerFor(ca)||shortCa(ca)).toUpperCase().slice(0,4))+'</div>'+
+          '<div class="cc-names"><b class="cc-pair">'+esc(tickerFor(ca) ? '$'+tickerFor(ca).toUpperCase() : shortCa(ca))+'</b>'+
           '<a class="cc-dex" href="https://dexscreener.com/solana/'+esc(ca)+'" target="_blank" rel="noopener noreferrer">on DexScreener '+IC.ext+'</a></div>'+
         '</div>'+
         '<div class="cc-mcap"><span class="cc-lbl">Current mcap</span>'+
@@ -894,6 +953,16 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     var chgEl = el.querySelector('.cc-chg');
     var pairEl = el.querySelector('.cc-pair');
     var dexEl = el.querySelector('.cc-dex');
+    var logoEl = el.querySelector('.cc-logo');
+    var lastIdent = '';
+
+    function paintIdentity(){
+      var m = META[ca] || {};
+      var key = (m.image_url || '') + '|' + (m.symbol || '');
+      if(key === lastIdent) return;
+      lastIdent = key;
+      logoEl.innerHTML = coinAva(ca, (tickerFor(ca) || shortCa(ca)).toUpperCase().slice(0,4));
+    }
 
     function showState(msg){
       stateEl.textContent = msg || '';
@@ -1003,7 +1072,9 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     }
 
     function paintHead(info, bars){
-      if(info && info.pair) pairEl.textContent = info.pair;
+      paintIdentity();
+      var tick = tickerFor(ca);
+      pairEl.textContent = (info && info.pair) || (tick ? '$'+tick.toUpperCase() : shortCa(ca));
       if(info && info.dex){
         dexEl.innerHTML = 'on '+esc(info.dex)+' '+IC.ext;
         dexEl.href = 'https://dexscreener.com/solana/'+encodeURIComponent(info.pool || ca);
@@ -1110,7 +1181,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   }
 
   function openChart(ca, b){
-    var t = tickerFor(ca), name = t ? '$'+t : shortCa(ca);
+    var t = tickerFor(ca), name = t ? '$'+t.toUpperCase() : shortCa(ca);
     openModal('<h3 id="mTitle">'+esc(name)+'</h3>'+
       (b ? '<p class="sub">'+(b.dir==='above'?'Higher than ':'Lower than ')+fmtCap(b.target)+
            (b.expiresAt ? ' · '+timeLeft(b.expiresAt-Date.now()) : '')+'</p>' : '')+
@@ -1193,7 +1264,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   var TICK_RE = /^[A-Za-z0-9]{1,10}$/;
   function coinColor(ca){ var h=0; for(var i=0;i<ca.length;i++) h=(h*31+ca.charCodeAt(i))>>>0; return 'hsl('+(h%360)+' 62% 66%)'; }
   function shortCa(ca){ return ca.slice(0,4)+'…'+ca.slice(-4); }
-  function label(b){ return b.ticker ? b.ticker.toUpperCase() : shortCa(b.ca); }
+  function label(b){ var t = tickerFor(b.ca); return t ? t.toUpperCase() : shortCa(b.ca); }
   var LOGOS = {
     'GTBxUiw6wJdmmkCGZgRHLyYxqu1vG4KtRpeox6yDpump':'/logos/jeanphil.jpg',
     'A13oRB9FFaiUjfi6LdCg6p9ka1u8SfGkUFs4SKvPpump':'/logos/toad.jpg',
@@ -1201,12 +1272,15 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     'CbyTNf7UPzvewHh4Zp6umogM2RWahhmGRJWLJnPwpump':'/logos/biketyson.jpg'
   };
   function safeLogo(u){ if(typeof u==='string') u=u.replace(/^(\/logos\/[\w-]+)\.png$/,'$1.jpg'); return typeof u==='string' && (/^\/logos\/[\w.-]+$/.test(u) || /^https:\/\/[^\s"'<>]+$/.test(u)) ? u : null; }
+  // The badge sits behind the image, so a logo that fails to load simply
+  // uncovers it again.
   function coinAva(ca, text){
-    var id = LOGOS[ca];
+    var m = ensureMeta(ca);
+    var src = (m && m.image_url) || LOGOS[ca] || null;
     return '<div class="coin" style="background:'+coinColor(ca)+'">'+esc(text)+
-      (id ? '<img src="'+esc(id)+'" alt="" loading="lazy" onerror="this.remove()">' : '')+'</div>';
+      (src ? '<img src="'+esc(src)+'" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '')+'</div>';
   }
-  function badge(b){ return (b.ticker ? b.ticker.toUpperCase() : b.ca).slice(0,4); }
+  function badge(b){ var t = tickerFor(b.ca); return (t ? t.toUpperCase() : b.ca).slice(0,4); }
 
   // me = the connected wallet address (identities are wallets now, not rows);
   // uid = the Supabase user id, only used for the admin-only trending list.
@@ -1642,8 +1716,11 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     }).join('');
   }
   function coinHead(){
-    var c=wCoin();
-    return '<div class="coinhead">'+coinAva(c.ca, badge(c))+'<span>'+(c.ticker?'<b style="color:var(--text)">$'+esc(c.ticker.toUpperCase())+'</b> · ':'')+'<span>'+esc(shortCa(c.ca))+'</span></span><a href="https://dexscreener.com/solana/'+esc(c.ca)+'" target="_blank" rel="noopener noreferrer" aria-label="Open chart on DexScreener">'+IC.ext+'</a></div>';
+    var c = wCoin(), tick = tickerFor(c.ca), name = nameFor(c.ca);
+    var title = tick ? '<b style="color:var(--text)">$'+esc(tick.toUpperCase())+'</b>' : '<b style="color:var(--text)">'+esc(shortCa(c.ca))+'</b>';
+    return '<div class="coinhead">'+coinAva(c.ca, badge(c))+
+      '<span>'+title+(name ? ' · <span>'+esc(name)+'</span>' : '')+'</span>'+
+      '<a href="https://dexscreener.com/solana/'+esc(c.ca)+'" target="_blank" rel="noopener noreferrer" aria-label="Open chart on DexScreener">'+IC.ext+'</a></div>';
   }
   function renderWizard(focus){
     renderStepper();
@@ -1661,7 +1738,9 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
           var live=ensureLive(c.ca), info=mcapCache[c.ca], ch=info && info.change24;
           var chg = (ch!==null && ch!==undefined && isFinite(ch))
             ? '<span class="chg '+(ch>=0?'up':'down')+'">'+(ch>=0?'+':'')+(+ch).toFixed(1)+'%</span>' : '';
-          return '<button type="button" class="popc" data-pop="'+i+'" title="'+esc(c.name)+'">'+coinAva(c.ca, c.ticker.slice(0,4))+'<div style="min-width:0"><b>'+esc(c.ticker)+'</b><span>'+(live?fmtCap(live):(LIVE[c.ca]===undefined?esc(c.name):'—'))+chg+'</span></div></button>';
+          // Tickers are shown uppercase whatever the token registered.
+          var tick = (tickerFor(c.ca) || c.ticker).toUpperCase();
+          return '<button type="button" class="popc" data-pop="'+i+'" title="'+esc(nameFor(c.ca) || c.name)+'">'+coinAva(c.ca, tick.slice(0,4))+'<div style="min-width:0"><b>'+esc(tick)+'</b><span>'+(live?fmtCap(live):(LIVE[c.ca]===undefined?esc(nameFor(c.ca)||c.name):'—'))+chg+'</span></div></button>';
         }).join('')+
         '</div></div>';
     } else if(W.step===2){
