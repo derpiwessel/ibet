@@ -12,7 +12,7 @@ pub enum EscrowError {
     InvalidGrace,
     #[msg("Stake is outside the allowed range")]
     StakeOutOfRange,
-    #[msg("Duration is not one of the allowed timeframes")]
+    #[msg("Duration must be between 5 minutes and 30 days")]
     InvalidDuration,
     #[msg("Target market cap must be greater than zero")]
     InvalidTarget,

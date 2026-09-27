@@ -30,6 +30,8 @@ use {
 };
 
 pub const SOL: u64 = 1_000_000_000;
+pub const MINUTE: i64 = 60;
+pub const HOUR: i64 = 3_600;
 pub const DAY: i64 = 86_400;
 
 /// The phase 1 production values.

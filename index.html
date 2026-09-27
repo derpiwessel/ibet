@@ -305,6 +305,11 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
   .cc-plot{padding:0}
   .cc-foot{padding:0 16px 12px}
 }
+.durcustom{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 0}
+.durcustom input{width:96px;height:44px;border-radius:10px;border:1px solid var(--field-line);background:var(--bg);color:var(--text);padding:0 12px;font-size:15px}
+.durcustom .selwrap{position:relative}
+.durcustom .sel{height:44px;padding:0 36px 0 12px}
+.durhint{font-size:13px;color:var(--muted)}
 .popc .chg{font-size:11px;font-weight:600;margin-left:6px}
 .popc .chg.up{color:var(--green)}
 .popc .chg.down{color:var(--red)}
@@ -573,7 +578,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     var pda = betPda(creator, a.betId);
     var data = new Buf().disc(IX.createBet)
       .u64(a.betId).key(a.ca).u8(a.dir==='above'?0:1)
-      .u64(a.target).u64(a.startMc||0).u64(Math.round(a.stake*LAMPORTS)).i64(a.days*86400)
+      .u64(a.target).u64(a.startMc||0).u64(Math.round(a.stake*LAMPORTS)).i64(Math.round(a.durSecs))
       .out();
     return { ix: ix([[creator,1,1],[configPda(),0,0],[pda,0,1],[SYS,0,0]], data), pda: pda.toBase58() };
   }
@@ -666,7 +671,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     b.observedAt   = observedAt>0 ? observedAt*1000 : null;
     b.betId        = r.u64();
     b.stake        = b.stakeLam/LAMPORTS;
-    b.days         = Math.round(durSecs/86400);
+    b.durSecs      = durSecs;
     b.ticker       = tickerFor(b.ca);
     return b;
   }
@@ -1148,7 +1153,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       target:+r.target_mcap_usd,
       startMc: r.start_mcap_usd ? +r.start_mcap_usd : null,
       stake: stakeLam/LAMPORTS, stakeLam: stakeLam,
-      days: Math.round((+r.duration_secs)/86400),
+      durSecs: +r.duration_secs,
       creator:r.creator, taker:r.taker, status:'settled', winner:r.winner,
       observedMc: r.observed_mcap_usd ? +r.observed_mcap_usd : null,
       finalMc:    r.observed_mcap_usd ? +r.observed_mcap_usd : null,
@@ -1224,6 +1229,18 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     return parseFloat(m[1])*{'':1,K:1e3,M:1e6,B:1e9,T:1e12}[m[2]];
   }
   function uid(){ return 'b'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+  // Durations read as "15 min", "4 h" or "3 days" — whichever unit divides
+  // cleanly, largest first.
+  var MIN_DUR = 5*60, MAX_DUR = 30*86400;
+  function fmtDur(secs){
+    secs = Math.round(secs);
+    if(!isFinite(secs) || secs<=0) return '';
+    if(secs % 86400 === 0){ var d=secs/86400; return d+(d===1?' day':' days'); }
+    if(secs % 3600  === 0){ return (secs/3600)+' h'; }
+    if(secs % 60    === 0){ return (secs/60)+' min'; }
+    return Math.round(secs/60)+' min';
+  }
+
   // "3 Oct 14:00"
   function fmtWhen(ms){
     if(!ms) return '';
@@ -1324,7 +1341,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       var mineC=b.creator===S.me, mineT=b.taker===S.me;
       // Settled rows carry their evidence in the target cell, so the clock
       // cell says when it was decided instead of repeating the number.
-      var when = b.status==='open' ? b.days+(b.days===1?' day':' days')
+      var when = b.status==='open' ? fmtDur(b.durSecs)
                : b.status==='matched' ? timeLeft(b.expiresAt-now)
                : (b.settledAt ? fmtWhen(b.settledAt) : 'Settled');
       var who;
@@ -1595,7 +1612,12 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     return items.length ? {asOf:String(t.asOf||'').slice(0,20), items:items} : null;
   }
   function findTrend(ca){ return TREND.items.filter(function(c){ return c.ca===ca; })[0]; }
-  var W = {step:1, ca:'', ticker:'', cur:'', dir:null, mult:null, target:'', days:7, stake:''};
+  var W = {step:1, ca:'', ticker:'', cur:'', dir:null, mult:null, target:'', dur:7*86400, stake:'', durCustom:false, durN:'', durU:86400};
+  // The presets the wizard offers; the chain accepts anything from 5 minutes
+  // to 30 days, which is what Custom is for.
+  var DUR_PRESETS = [5*60, 15*60, 30*60, 3600, 4*3600, 86400, 3*86400, 7*86400];
+  function durOk(secs){ return isFinite(secs) && secs>=MIN_DUR && secs<=MAX_DUR; }
+  function customDur(){ return Math.round((parseFloat(W.durN)||0) * W.durU); }
   var ARROW_R = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
   var ARROW_L = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>';
   function wCoin(){ return {ca:W.ca, ticker:W.ticker}; }
@@ -1608,7 +1630,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   function pctStr(t,c){ var p=(t/c-1)*100; return (p>0?'+':'')+(Math.abs(p)>=100?Math.round(p):+p.toFixed(1))+'%'; }
   function hasCur(){ var c=wCur(); return isFinite(c)&&c>0; }
   function dirOk(){ if(!hasCur()) return true; var t=wTarget(), c=wCur(); return W.dir==='above' ? t>c : t<c; }
-  function step2ok(){ var t=wTarget(), st=wStake(); return !!W.dir && isFinite(t)&&t>0 && dirOk() && isFinite(st)&&st>0 && (!W.ticker||TICK_RE.test(W.ticker)); }
+  function step2ok(){ var t=wTarget(), st=wStake(); return !!W.dir && isFinite(t)&&t>0 && dirOk() && isFinite(st)&&st>0 && durOk(W.dur) && (!W.ticker||TICK_RE.test(W.ticker)); }
   var MULTS = { above:[[1.5,'+50%'],[2,'2x'],[3,'3x'],[5,'5x'],[10,'10x']], below:[[0.75,'−25%'],[0.5,'−50%'],[0.25,'−75%'],[0.1,'−90%']] };
 
   function renderStepper(){
@@ -1657,7 +1679,19 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
             (hasCur()?'<div class="chips" role="group" aria-label="How much">'+MULTS[W.dir].map(function(m){ return '<button type="button" data-wmult="'+m[0]+'" aria-pressed="'+(W.mult===m[0])+'">'+m[1]+'</button>'; }).join('')+'</div>':'')+
             '<div class="tgtrow"><label for="wTarget" class="lbl">Target market cap</label><div class="bigin"><span>$</span><input id="wTarget" inputmode="decimal" placeholder="'+(hi?'e.g. 5M':'e.g. 500K')+'" autocomplete="off" value="'+esc(W.target)+'"></div><span class="tgtpct" id="wPct"></span></div></div>'+
           '<div class="bx"><span class="lbl">Timeframe</span><div class="chips" role="group" aria-label="Timeframe">'+
-            [1,3,5,7,14,30].map(function(d){ return '<button type="button" data-wdays="'+d+'" aria-pressed="'+(W.days===d)+'">'+d+(d===1?' day':' days')+'</button>'; }).join('')+'</div></div>'+
+            DUR_PRESETS.map(function(d){ return '<button type="button" data-wdur="'+d+'" aria-pressed="'+(!W.durCustom && W.dur===d)+'">'+fmtDur(d)+'</button>'; }).join('')+
+            '<button type="button" data-wdurcustom="1" aria-pressed="'+W.durCustom+'">Custom</button>'+
+            '</div>'+
+            (W.durCustom
+              ? '<div class="durcustom"><label for="wDurN" class="lbl">How long?</label>'+
+                '<input id="wDurN" inputmode="decimal" placeholder="e.g. 45" autocomplete="off" value="'+esc(W.durN)+'">'+
+                '<div class="selwrap"><select class="sel" id="wDurU" aria-label="Unit">'+
+                  [[60,'minutes'],[3600,'hours'],[86400,'days']].map(function(u){
+                    return '<option value="'+u[0]+'"'+(W.durU===u[0]?' selected':'')+'>'+u[1]+'</option>'; }).join('')+
+                '</select><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></div>'+
+                '<span class="durhint" id="wDurHint"></span></div>'
+              : '')+
+            '</div>'+
           '<div class="bx"><label for="wStake">Your stake</label><div class="bigin"><input id="wStake" inputmode="decimal" placeholder="0.0" autocomplete="off" value="'+esc(W.stake)+'"><span class="u">SOL</span></div>'+
             '<div class="chips" role="group" aria-label="Quick stake">'+[0.1,0.25,0.5,1,2].map(function(v){ return '<button type="button" data-wstake="'+v+'" aria-pressed="'+(wStake()===v)+'">'+v+'</button>'; }).join('')+'</div></div>'+
           (known?'':'<div class="bx" style="grid-column:1/-1"><label for="wTick">Ticker (optional — shows instead of the CA)</label><input id="wTick" class="tkin" maxlength="11" placeholder="e.g. WIF" autocomplete="off" spellcheck="false" value="'+esc(W.ticker)+'"></div>')+
@@ -1673,7 +1707,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
           '<div><span>Coin</span><span>'+esc(name)+' <span style="color:var(--muted);font-weight:400">· '+esc(shortCa(c.ca))+'</span></span></div>'+
           (hasCur()?'<div><span>Current mcap</span><span>'+fmtCap(wCur())+'</span></div>':'')+
           '<div><span>Your call</span><span style="color:var(--'+(W.dir==='above'?'green':'red')+')">'+(W.dir==='above'?'Higher than ':'Lower than ')+fmtCap(t)+(hasCur()?' <span style="font-weight:400">('+pctStr(t,wCur())+')</span>':'')+'</span></div>'+
-          '<div><span>Timeframe</span><span>'+W.days+(W.days===1?' day':' days')+' <span style="color:var(--muted);font-weight:400">from when it’s taken</span></span></div>'+
+          '<div><span>Timeframe</span><span>'+fmtDur(W.dur)+' <span style="color:var(--muted);font-weight:400">from when it’s taken</span></span></div>'+
           '<div><span>Your stake</span><span>'+fmtSol(st)+'</span></div>'+
           '<div><span>Pot</span><span>'+fmtSol(split(st).pot)+'</span></div>'+
           '<div><span>Platform fee ('+(feeBps()/100)+'%)</span><span>'+fmtSol(split(st).fee)+'</span></div>'+
@@ -1700,7 +1734,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       if($('wPct')) $('wPct').textContent = (isFinite(c)&&c>0&&isFinite(t)&&t>0) ? pctStr(t,c)+' from now' : '';
       if($('wLine')){
         $('wLine').innerHTML = (isFinite(t)&&t>0&&isFinite(st)&&st>0&&dirOk())
-          ? 'You win <b>'+fmtSol(split(st).win)+'</b> if it’s <b style="color:var(--'+(W.dir==='above'?'green':'red')+')">'+(W.dir==='above'?'above ':'below ')+fmtCap(t)+'</b> when '+W.days+(W.days===1?' day':' days')+' are up.'
+          ? 'You win <b>'+fmtSol(split(st).win)+'</b> if it’s <b style="color:var(--'+(W.dir==='above'?'green':'red')+')">'+(W.dir==='above'?'above ':'below ')+fmtCap(t)+'</b> within '+fmtDur(W.dur)+'.'
           : '';
       }
       // The dashed target line follows what is being typed.
@@ -1708,10 +1742,13 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       document.querySelectorAll('[data-wmult]').forEach(function(b){ b.setAttribute('aria-pressed', String(+b.dataset.wmult===W.mult)); });
       if(W.dir && isFinite(t)&&t>0 && !dirOk()) msg = W.dir==='above' ? 'For “Higher”, the target has to be above '+fmtCap(c)+'.' : 'For “Lower”, the target has to be below '+fmtCap(c)+'.';
       else if(W.ticker && !TICK_RE.test(W.ticker)) msg='Ticker: letters and numbers only, max 10.';
+      else if(!durOk(W.dur)) msg='Pick a length between 5 minutes and 30 days.';
       else if(isFinite(st) && st>0 && CFG && (st<minStake()-1e-9 || st>maxStake()+1e-9)) msg='Stake has to be between '+fmtSol(minStake())+' and '+fmtSol(maxStake())+'.';
       else if(isFinite(st) && st>0 && S.me && st>available()+1e-9) msg='Heads up: you only have '+fmtSol(available())+' in your wallet.';
       $('wHint2').textContent=msg;
       document.querySelectorAll('[data-wstake]').forEach(function(b){ b.setAttribute('aria-pressed', String(+b.dataset.wstake===st)); });
+      var dh=$('wDurHint');
+      if(dh) dh.textContent = W.durCustom ? (durOk(W.dur) ? '= '+fmtDur(W.dur) : '5 minutes to 30 days') : '';
     } else {
       var st3=wStake();
       var inLimits = !CFG || (st3>=minStake()-1e-9 && st3<=maxStake()+1e-9);
@@ -1731,8 +1768,13 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     else if(id==='wTarget'){ W.target=e.target.value; W.mult=null; }
     else if(id==='wStake') W.stake=e.target.value;
     else if(id==='wTick') W.ticker=e.target.value.trim().replace(/^\$/,'');
+    else if(id==='wDurN'){ W.durN=e.target.value; W.dur=customDur(); }
     else return;
     wizMeta();
+  });
+  $('createForm').addEventListener('change',function(e){
+    if(e.target.id!=='wDurU') return;
+    W.durU=+e.target.value; W.dur=customDur(); wizMeta();
   });
   $('createForm').addEventListener('keydown',function(e){
     if(e.key!=='Enter' || e.target.tagName!=='INPUT') return;
@@ -1740,7 +1782,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     if(W.step===1 && step1ok()) goStep(2); else if(W.step===2 && step2ok()) goStep(3);
   });
   $('createForm').addEventListener('click',function(e){
-    var t=e.target.closest('[data-wedittrend],[data-pop],[data-wnext],[data-wstep],[data-wdir],[data-wmult],[data-wdays],[data-wstake],[data-wcreate]');
+    var t=e.target.closest('[data-wedittrend],[data-pop],[data-wnext],[data-wstep],[data-wdir],[data-wmult],[data-wdur],[data-wdurcustom],[data-wstake],[data-wcreate]');
     if(!t || t.disabled) return;
     if(t.dataset.wedittrend){ editTrending(); return; }
     if(t.dataset.pop!==undefined){ var c=TREND.items[+t.dataset.pop]; if(!c) return; pickCoin(c.ca); goStep(2); return; }
@@ -1756,7 +1798,15 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       var c2=wCur(); if(!hasCur()) return;
       W.mult=+t.dataset.wmult; W.target=capStr(c2*W.mult); $('wTarget').value=W.target; wizMeta(); return;
     }
-    if(t.dataset.wdays){ W.days=+t.dataset.wdays; document.querySelectorAll('[data-wdays]').forEach(function(b){ b.setAttribute('aria-pressed', String(b===t)); }); return; }
+    if(t.dataset.wdur){ W.dur=+t.dataset.wdur; W.durCustom=false; renderWizard(false); return; }
+    if(t.dataset.wdurcustom){
+      W.durCustom=true;
+      if(!W.durN){ W.durN=String(Math.round(W.dur/W.durU)) || '1'; }
+      W.dur=customDur();
+      renderWizard(false);
+      var f=$('wDurN'); if(f) f.focus();
+      return;
+    }
     if(t.dataset.wstake){ W.stake=t.dataset.wstake; $('wStake').value=W.stake; wizMeta(); return; }
     if(t.dataset.wcreate){ createBet(); }
   });
@@ -1818,12 +1868,12 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     var built = ixCreateBet(S.me, {
       betId: Date.now(), ca: ca, dir: W.dir,
       target: Math.round(t), startMc: hasCur() ? Math.round(wCur()) : 0, // the live value shown on step 2
-      stake: st, days: W.days
+      stake: st, durSecs: W.dur
     });
     sendTx([built.ix], 'Creating bet — approve in your wallet…').then(function(sig){
       S.lastTx=sig;
       tickerRemember(ca, ticker);
-      W={step:1, ca:'', ticker:'', cur:'', dir:null, mult:null, target:'', days:7, stake:''};
+      W={step:1, ca:'', ticker:'', cur:'', dir:null, mult:null, target:'', dur:7*86400, stake:'', durCustom:false, durN:'', durU:86400};
       S.tab='open'; S.coin='';
       toast('Bet created and staked. Waiting for a taker.');
       renderWizard(false);
@@ -1843,10 +1893,10 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     if(b.stake>available()+1e-9) return toast('Not enough devnet SOL — you have '+fmtSol(available())+'.');
     var sp = split(b.stake);
     // The clock starts when this bet is taken, so that is the deadline.
-    var deadline = Date.now() + b.days*86400000;
+    var deadline = Date.now() + b.durSecs*1000;
     var key = 'You win if '+esc(label(b))+' <b>never touches</b> '+fmtCap(b.target)+' before '+fmtWhen(deadline)+'.';
     openModal('<h3 id="mTitle">Take this bet?</h3><p>'+key+'</p>'+
-      '<p style="margin:-6px 0 16px;font-size:13px;color:var(--muted)">If it touches that market cap at any moment before then — even for one minute — the other side wins straight away.</p>'+
+      '<p style="margin:-6px 0 16px;font-size:13px;color:var(--muted)">Runs for '+fmtDur(b.durSecs)+' from now. If it touches that market cap at any moment before then — even for one minute — the other side wins straight away.</p>'+
       '<div id="modalChartSlot"></div>'+
       '<div class="summary"><div><span>Your stake</span><span>'+fmtSol(b.stake)+'</span></div>'+
       '<div><span>Pot</span><span>'+fmtSol(sp.pot)+'</span></div>'+
@@ -1969,7 +2019,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     if(a==='take') askTake(id); else if(a==='cancel') cancel(id); else if(a==='resolve') askResolve(id); else if(a==='refund') refund(id);
   });
   $('coinFilter').onchange=function(){ S.coin=this.value; renderTabs(); renderList(); };
-  setInterval(function(){ if(S.bets.some(function(b){return b.status==='matched';})) renderList(); },30000);
+  setInterval(function(){ if(S.bets.some(function(b){return b.status==='matched';})) renderList(); },15000);
 
   // ── boot ──
   tickersRead();

@@ -363,6 +363,11 @@ async function run() {
       }
 
       const newestChecked = candles[candles.length - 1].t;
+      // A taker win means "never touched", so it needs candles all the way to
+      // the deadline — a candle that starts at or after it proves nothing more
+      // can land inside the window. The source publishes a minute or two late,
+      // which matters for a five-minute bet, so the keeper simply waits for
+      // that coverage instead of calling it early.
       const coveredThroughEnd = newestChecked >= bet.expiresAt;
 
       if (hit) {
@@ -423,11 +428,20 @@ async function run() {
       }
 
       // Nothing to do yet — remember how far we got so the next run is cheap.
+      const waiting = now >= bet.expiresAt && !coveredThroughEnd;
       await mirror(bet, {
         pool_address: pool,
         checked_through: new Date(newestChecked * 1000).toISOString(),
+        keeper_note: waiting
+          ? 'past the deadline, waiting for candles to cover the whole window'
+          : null,
       });
-      results.push({ bet: bet.address, watching: true, checked_through: newestChecked });
+      results.push({
+        bet: bet.address,
+        watching: true,
+        checked_through: newestChecked,
+        waiting_for_coverage: waiting,
+      });
     } catch (e) {
       // A bad source or a failed send must never stop the other bets, and the
       // 48h refund remains the safety net.

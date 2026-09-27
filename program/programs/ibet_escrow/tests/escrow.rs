@@ -175,10 +175,10 @@ fn a_stake_above_the_maximum_is_rejected() {
 }
 
 #[test]
-fn a_duration_outside_the_whitelist_is_rejected() {
+fn a_duration_outside_the_allowed_range_is_rejected() {
     let mut env = Env::new();
     let creator = env.creator.insecure_clone();
-    for duration in [2 * DAY, 6 * DAY, 31 * DAY, 0, -7 * DAY, 7 * DAY + 1] {
+    for duration in [4 * MINUTE, MINUTE, 0, -7 * DAY, 30 * DAY + 1, 365 * DAY] {
         let args = CreateBetArgs {
             duration_secs: duration,
             ..env.default_args(1)
@@ -189,16 +189,128 @@ fn a_duration_outside_the_whitelist_is_rejected() {
 }
 
 #[test]
-fn every_whitelisted_duration_is_accepted() {
+fn five_minutes_is_allowed_and_four_is_not() {
+    // The floor exists because settlement reads 1-minute candles, so it is
+    // worth pinning both sides of it.
     let mut env = Env::new();
-    for (i, days) in [1i64, 3, 5, 7, 14, 30].iter().enumerate() {
+    let creator = env.creator.insecure_clone();
+
+    let args = CreateBetArgs {
+        duration_secs: 4 * MINUTE,
+        ..env.default_args(1)
+    };
+    let ix = env.ix_create(&creator.pubkey(), args);
+    assert_escrow_err(env.send(&[ix], &[&creator]), EscrowError::InvalidDuration);
+
+    let args = CreateBetArgs {
+        duration_secs: 5 * MINUTE,
+        ..env.default_args(2)
+    };
+    let bet_pda = env.open_bet_with(args);
+    assert_eq!(env.bet(&bet_pda).duration_secs, 5 * MINUTE);
+}
+
+#[test]
+fn thirty_days_is_allowed_and_a_second_more_is_not() {
+    let mut env = Env::new();
+    let creator = env.creator.insecure_clone();
+
+    let args = CreateBetArgs {
+        duration_secs: 30 * DAY,
+        ..env.default_args(1)
+    };
+    let bet_pda = env.open_bet_with(args);
+    assert_eq!(env.bet(&bet_pda).duration_secs, 30 * DAY);
+
+    let args = CreateBetArgs {
+        duration_secs: 30 * DAY + 1,
+        ..env.default_args(2)
+    };
+    let ix = env.ix_create(&creator.pubkey(), args);
+    assert_escrow_err(env.send(&[ix], &[&creator]), EscrowError::InvalidDuration);
+}
+
+#[test]
+fn any_length_inside_the_range_is_accepted() {
+    // Including odd ones, since the wizard now offers a custom length.
+    let mut env = Env::new();
+    let lengths = [
+        5 * MINUTE, 15 * MINUTE, 30 * MINUTE, HOUR, 4 * HOUR,
+        DAY, 3 * DAY, 7 * DAY, 30 * DAY, 77 * MINUTE + 13,
+    ];
+    for (i, secs) in lengths.iter().enumerate() {
         let args = CreateBetArgs {
-            duration_secs: days * DAY,
+            duration_secs: *secs,
             ..env.default_args(100 + i as u64)
         };
         let bet_pda = env.open_bet_with(args);
-        assert_eq!(env.bet(&bet_pda).duration_secs, days * DAY);
+        assert_eq!(env.bet(&bet_pda).duration_secs, *secs);
     }
+}
+
+#[test]
+fn a_five_minute_bet_runs_the_whole_way_through() {
+    let mut env = Env::new();
+    let (creator, taker, fee_wallet) = (
+        env.creator.pubkey(),
+        env.taker.pubkey(),
+        env.fee_wallet.pubkey(),
+    );
+    let (c0, t0, f0) = (env.bal(&creator), env.bal(&taker), env.bal(&fee_wallet));
+
+    let args = CreateBetArgs {
+        duration_secs: 5 * MINUTE,
+        ..env.default_args(1)
+    };
+    let bet_pda = env.open_bet_with(args);
+    env.take(&bet_pda);
+    assert_eq!(env.bet(&bet_pda).expires_at, BASE_TIME + 5 * MINUTE);
+
+    // Never touched, so the taker only wins once those five minutes are up.
+    let resolver = env.resolver.insecure_clone();
+    let ix = env.ix_settle(
+        &resolver.pubkey(), &bet_pda, &creator, &taker, &fee_wallet,
+        Outcome::TakerWins, 1_000, BASE_TIME + 5 * MINUTE,
+    );
+    assert_escrow_err(env.send(&[ix], &[&resolver]), EscrowError::TakerCannotWinYet);
+
+    env.advance(5 * MINUTE);
+    let ix = env.ix_settle(
+        &resolver.pubkey(), &bet_pda, &creator, &taker, &fee_wallet,
+        Outcome::TakerWins, 1_000, BASE_TIME + 5 * MINUTE,
+    );
+    env.send(&[ix], &[&resolver]).unwrap();
+
+    assert_eq!(env.bal(&taker), t0 - SOL + 1_960_000_000);
+    assert_eq!(env.bal(&creator), c0 - SOL);
+    assert_eq!(env.escrow_total(&bet_pda), c0 + t0 + f0);
+}
+
+#[test]
+fn a_five_minute_bet_pays_the_creator_the_moment_it_is_touched() {
+    let mut env = Env::new();
+    let (creator, taker, fee_wallet) = (
+        env.creator.pubkey(),
+        env.taker.pubkey(),
+        env.fee_wallet.pubkey(),
+    );
+    let c0 = env.bal(&creator);
+
+    let args = CreateBetArgs {
+        duration_secs: 5 * MINUTE,
+        ..env.default_args(1)
+    };
+    let bet_pda = env.open_bet_with(args);
+    env.take(&bet_pda);
+    env.advance(2 * MINUTE);
+
+    let resolver = env.resolver.insecure_clone();
+    let ix = env.ix_settle(
+        &resolver.pubkey(), &bet_pda, &creator, &taker, &fee_wallet,
+        Outcome::CreatorWins, 6_000_000, BASE_TIME + MINUTE,
+    );
+    env.send(&[ix], &[&resolver]).unwrap();
+    assert_eq!(env.bal(&creator), c0 - SOL + 1_960_000_000);
 }
 
 #[test]
