@@ -312,13 +312,6 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .nowcap b{color:var(--text2);font-weight:600}
 .coinbtn{background:none;border:0;padding:0;display:contents;cursor:pointer}
 .evid{display:block;font-size:11.5px;color:var(--faint);margin-top:3px}
-.rules{border:1px solid var(--row-line);background:var(--row);border-radius:16px;padding:22px 24px;margin:0 0 22px}
-.rules h3{margin:0 0 6px;font-family:'Inter Tight','Inter',sans-serif;font-size:19px;letter-spacing:-.02em}
-.rules ul{margin:10px 0 0;padding-left:18px;color:var(--text2);font-size:14px;line-height:1.75}
-.rules li b{color:var(--text)}
-.rules .warn{margin:14px 0 0;font-size:13px;color:var(--muted)}
-.ruleslink{background:none;border:0;padding:0;color:var(--muted);font-size:13px;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
-.ruleslink:hover{color:var(--text2)}
 .netbar{background:var(--flame);color:#fff;text-align:center;font-size:12.5px;font-weight:600;padding:7px 16px;letter-spacing:.01em}
 .netbar a{color:#fff;text-decoration:underline;text-underline-offset:2px}
 .exlink{display:inline-flex;align-items:center;gap:4px;color:var(--faint);text-decoration:none}
@@ -385,11 +378,6 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     </div>
   </div>
   <div class="list" id="list" aria-live="polite"></div>
-
-  <section class="rules" id="rulesBox" aria-labelledby="rulesH">
-    <h3 id="rulesH">How it works</h3>
-    <div id="rulesBody"></div>
-  </section>
 
   <section class="wiz" id="createForm" aria-labelledby="wTitle">
     <div class="wiz-top"><span class="balpill" id="balpill2"></span></div>
@@ -1419,26 +1407,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     });
     $('betView').hidden = S.view!=='bet';
     $('leaderView').hidden = S.view!=='leader';
-    $('rulesBody').innerHTML = rulesHtml();
     renderTop(); renderFilter(); renderTabs(); renderList(); renderLeader(); if($('wizBody').dataset.step===String(W.step)) wizMeta(); else renderWizard(false);
-  }
-
-  // ── how it works ─────────────────────────────────────────────────────────
-  function rulesHtml(){
-    return '<ul>'+
-      '<li><b>Touch = win.</b> The creator wins the moment the market cap touches the target — the high of a 1-minute candle for Higher, the low for Lower. It does not have to end there.</li>'+
-      '<li><b>A creator win pays out immediately</b>, even days before the deadline. The taker only wins if the target was never touched in the whole window.</li>'+
-      '<li><b>Mcap = price × total supply</b>, the same definition on this page and in resolution.</li>'+
-      '<li><b>Settlement is automatic.</b> A keeper checks every minute and posts the deciding candle as evidence with each payout.</li>'+
-      '<li><b>'+(feeBps()/100)+'% fee</b> on the pot. The rest goes to the winner.</li>'+
-      '<li><b>Refunds after 48h.</b> If settlement never happens, anyone can unwind the bet and both sides get their stake back, no fee.</li>'+
-      '<li><b>No coin filter.</b> Any Solana token can be bet on — check the chart yourself.</li>'+
-      '</ul>'+
-      '<p class="warn">Small coins move fast. A single large buy can push the price through a target for one minute and fall straight back — that still counts as a touch.</p>';
-  }
-  function openRules(){
-    openModal('<h3 id="mTitle">How it works</h3><div class="rules" style="border:0;padding:0;background:none">'+rulesHtml()+'</div>'+
-      '<div class="mact"><button class="wbtn" data-close="1">Got it</button></div>');
   }
 
   // ── modal ──
@@ -1695,7 +1664,6 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
           '<div class="betline" id="wLine" style="grid-column:1/-1"></div>'+
         '</div>' : '')+
         '<p class="whint" id="wHint2"></p>'+
-        '<p style="margin:0 0 18px"><button type="button" class="ruleslink" data-rules="1">How winning works</button></p>'+
         '<div class="wnav"><button type="button" class="wbtn ghost" data-wstep="1">'+ARROW_L+' Back</button><button type="button" class="nextbtn" id="wNext2" data-wnext="3">Next '+ARROW_R+'</button></div></div>';
     } else {
       var c=wCoin(), t=wTarget(), st=wStake();
@@ -1878,7 +1846,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     var deadline = Date.now() + b.days*86400000;
     var key = 'You win if '+esc(label(b))+' <b>never touches</b> '+fmtCap(b.target)+' before '+fmtWhen(deadline)+'.';
     openModal('<h3 id="mTitle">Take this bet?</h3><p>'+key+'</p>'+
-      '<p style="margin:-6px 0 16px;font-size:13px;color:var(--muted)">If it touches that market cap at any moment before then — even for one minute — the other side wins straight away. <button type="button" class="ruleslink" data-rules="1">How it works</button></p>'+
+      '<p style="margin:-6px 0 16px;font-size:13px;color:var(--muted)">If it touches that market cap at any moment before then — even for one minute — the other side wins straight away.</p>'+
       '<div id="modalChartSlot"></div>'+
       '<div class="summary"><div><span>Your stake</span><span>'+fmtSol(b.stake)+'</span></div>'+
       '<div><span>Pot</span><span>'+fmtSol(sp.pot)+'</span></div>'+
@@ -1991,7 +1959,6 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     }
     var ch=e.target.closest('[data-chart]');
     if(ch){ openChart(ch.getAttribute('data-chart'), find(ch.getAttribute('data-bet'))); return; }
-    if(e.target.closest('[data-rules]')){ openRules(); return; }
     var wb=e.target.closest('[data-wallet]'); if(wb){ connectWallet(wb.id==='walletBtn'?'nav':'hero'); return; }
     var t=e.target.closest('[data-close],[data-go],[data-tab],[data-act]');
     if(!t) return;
