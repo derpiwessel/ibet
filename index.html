@@ -318,6 +318,14 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .coinbtn{background:none;border:0;padding:0;display:contents;cursor:pointer}
 .evid{display:block;font-size:11.5px;color:var(--faint);margin-top:3px}
 .netbar{background:var(--flame);color:#fff;text-align:center;font-size:12.5px;font-weight:600;padding:7px 16px;letter-spacing:.01em}
+.netbar.beta{background:var(--row);color:var(--text2);border-bottom:1px solid var(--row-line);font-weight:500}
+.netbar.beta b{color:var(--text)}
+.geobar{background:var(--row);border:1px solid var(--row-line);border-radius:12px;padding:14px 16px;margin:0 0 18px;font-size:14px;color:var(--text2)}
+.geobar b{color:var(--text)}
+.terms{font-size:14px;color:var(--text2);line-height:1.7}
+.terms ul{margin:10px 0 0;padding-left:18px}
+.termsrow{display:flex;gap:10px;align-items:flex-start;margin:18px 0 0;font-size:14px}
+.termsrow input{margin-top:3px;width:18px;height:18px;accent-color:var(--green)}
 .netbar a{color:#fff;text-decoration:underline;text-underline-offset:2px}
 .exlink{display:inline-flex;align-items:center;gap:4px;color:var(--faint);text-decoration:none}
 .exlink:hover{color:var(--text2)}
@@ -330,7 +338,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
 </head>
 <body>
 <header>
-  <div class="netbar" role="status">Devnet — test SOL, no real value. Bets settle on the ibet escrow program.</div>
+  <div class="netbar" id="netbar" role="status"></div>
   <div class="wrap nav">
     <button class="logo" data-go="bet" aria-label="ibet home">ibet</button>
     <nav class="links" aria-label="Main">
@@ -415,15 +423,38 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   // ── chain config ──────────────────────────────────────────────────────────
   // Going to mainnet is a change to these three values plus a mainnet deploy of
   // the same program; nothing below this block knows which cluster it is on.
-  var CHAIN = {
-    cluster:   'devnet',
-    rpcUrl:    'https://api.devnet.solana.com',
-    programId: '51Qu3DKZZ9bHJKiNyXhKcTp7PqJNW1YqVcx7Cqm6Vyv',
-    // The escrow is on devnet, but the coins people bet on are real mainnet
-    // tokens, so supply and price are read from mainnet. Two clusters on
-    // purpose; going to mainnet later makes these the same endpoint.
-    dataRpcUrl: 'https://api.mainnet-beta.solana.com'
+  // ── which chain this build talks to ──────────────────────────────────────
+  // `main` ships CLUSTER = 'mainnet'; previews stay on devnet, so the devnet
+  // program keeps working as a testing ground. Everything below reads from the
+  // selected entry and knows nothing else about the cluster.
+  var CLUSTER = 'devnet';
+
+  var CHAINS = {
+    devnet: {
+      cluster:   'devnet',
+      rpcUrl:    'https://api.devnet.solana.com',
+      programId: '51Qu3DKZZ9bHJKiNyXhKcTp7PqJNW1YqVcx7Cqm6Vyv',
+      // Coins are mainnet tokens even when the escrow is on devnet, so market
+      // data always comes from mainnet.
+      dataRpcUrl: 'https://api.mainnet-beta.solana.com',
+      live: false
+    },
+    mainnet: {
+      cluster:   'mainnet-beta',
+      // TODO(owner): a Helius (or equivalent) URL whose key is restricted to
+      // the i-bet.fun origin. Every free public mainnet RPC refuses browser
+      // traffic, so betting cannot work until this is set.
+      rpcUrl:    '',
+      // TODO(owner): filled in once the mainnet program is deployed.
+      programId: '',
+      dataRpcUrl: '',
+      live: true
+    }
   };
+
+  var CHAIN = CHAINS[CLUSTER] || CHAINS.devnet;
+  /// Real money is at stake on this build.
+  var LIVE_MONEY = !!CHAIN.live;
 
   var LAMPORTS = 1e9;
   var w3 = window.solanaWeb3 || null;
@@ -435,7 +466,10 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       dataConn = new w3.Connection(CHAIN.dataRpcUrl, 'confirmed');
     }catch(e){ if(window.console) console.error('ibet: bad chain config', e); }
   }
-  function explorer(kind, id){ return 'https://explorer.solana.com/'+kind+'/'+id+'?cluster='+CHAIN.cluster; }
+  function explorer(kind, id){
+    var base = 'https://explorer.solana.com/'+kind+'/'+id;
+    return CHAIN.cluster==='mainnet-beta' ? base : base+'?cluster='+CHAIN.cluster;
+  }
 
   // Anchor discriminators and account sizes, taken from
   // program/target/idl/ibet_escrow.json. The Rust test
@@ -456,7 +490,10 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   var OUTCOME_CREATOR_WINS = 0, OUTCOME_TAKER_WINS = 1;
   // How long the keeper gets before a human may step in.
   var FORCE_RESOLVE_AFTER = 30 * 60 * 1000;
-  var BET_SIZE = 221, CONFIG_SIZE = 132;
+  var BET_SIZE = 221;
+  // Phase 3 appended the exposure counter. Devnet still runs the phase-2
+  // program, so both lengths have to be readable.
+  var CONFIG_SIZE_V1 = 132, CONFIG_SIZE_V2 = 148;
   var STATUS = ['open','matched','settled','cancelled','refunded'];
 
   // Program errors, from the IDL. Anything not listed falls back to a generic
@@ -538,10 +575,17 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   function loadConfig(){
     if(!conn) return Promise.resolve(null);
     return conn.getAccountInfo(configPda()).then(function(ai){
-      if(!ai || ai.data.length !== CONFIG_SIZE) return null;
+      if(!ai) return null;
+      var len = ai.data.length;
+      if(len !== CONFIG_SIZE_V1 && len !== CONFIG_SIZE_V2) return null;
       var r=new Rd(ai.data); r.disc();
       CFG = { admin:r.key(), resolver:r.key(), feeWallet:r.key(), feeBps:r.u16(),
               minStake:r.u64(), maxStake:r.u64(), graceSecs:r.i64(), paused:r.bool() };
+      r.u8();  // bump
+      if(len === CONFIG_SIZE_V2){
+        CFG.openExposure = r.u64();
+        CFG.maxOpenExposure = r.u64();
+      }
       return CFG;
     }).catch(function(){ return null; });
   }
@@ -687,6 +731,69 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     TICKERS[ca]=String(t).toUpperCase().slice(0,10);
     try{ localStorage.setItem(TICKERS_KEY, JSON.stringify(TICKERS)); }catch(_){}
   }
+  // ── where the visitor is, and whether they have agreed ───────────────────
+  // The middleware sets these cookies from the Vercel edge. They are not a
+  // security control — a VPN defeats them and the program has no idea where
+  // anyone is — but they stop casual access from a restricted country.
+  function cookie(name){
+    var m = new RegExp('(?:^|; )'+name+'=([^;]*)').exec(document.cookie);
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+  var GEO = { country: cookie('ibet_country') || '', blocked: cookie('ibet_blocked')==='1' };
+
+  var TERMS_VERSION = '2026-09-28';
+  var TERMS_KEY = 'ibet.terms.' + TERMS_VERSION;
+
+  function hasAcceptedTerms(){
+    if(!S.me) return false;
+    if(S.termsOk) return true;
+    try{ return localStorage.getItem(TERMS_KEY+'.'+S.me) === '1'; }catch(_){ return false; }
+  }
+
+  // Asked once per wallet, before its first bet. Recorded in Supabase so it is
+  // not just a checkbox in one browser.
+  function askTerms(next){
+    openModal('<h3 id="mTitle">Before your first bet</h3>'+
+      '<div class="terms"><p><b>ibet is in beta.</b> Bets are settled automatically from 1-minute candles, and the '+
+      'market cap you are judged on is the one shown on the chart.</p>'+
+      '<ul><li>Stakes are capped — the site shows the current limit.</li>'+
+      '<li>A bet is won the moment the target is touched; there is no dispute or appeal.</li>'+
+      '<li>If settlement ever fails, anyone can refund the bet after 48 hours and both sides get their stake back.</li>'+
+      '<li>Only bet what you can afford to lose.</li></ul>'+
+      '<p style="margin-top:14px"><a href="/terms.html" target="_blank" rel="noopener noreferrer">Read the full terms</a></p></div>'+
+      '<label class="termsrow"><input type="checkbox" id="termsBox">'+
+      '<span>I am 18 or older and I accept the terms.</span></label>'+
+      '<div class="mact"><button class="wbtn ghost" data-close="1">Cancel</button>'+
+      '<button class="wbtn" id="termsGo" disabled>Continue</button></div>',
+      function(){
+        var box=$('termsBox'), go=$('termsGo');
+        box.onchange=function(){ go.disabled = !box.checked; };
+        go.onclick=function(){
+          if(!box.checked) return;
+          S.termsOk = true;
+          try{ localStorage.setItem(TERMS_KEY+'.'+S.me, '1'); }catch(_){}
+          if(sb) sb.from('terms_acceptance').insert({
+            wallet: S.me, terms_version: TERMS_VERSION, country: GEO.country || null
+          }).then(function(){}, function(){});
+          closeModal();
+          if(next) next();
+        };
+      });
+  }
+
+  /// Runs `next` once the wallet is connected, allowed to bet here, and has
+  /// agreed. Used by both create and take — the only two things that put new
+  /// money in.
+  function gateBetting(next){
+    if(!S.me) return connect();
+    if(GEO.blocked){
+      toast('Betting isn’t available in your country. You can still cancel or refund your own bets.');
+      return;
+    }
+    if(!hasAcceptedTerms()) return askTerms(next);
+    next();
+  }
+
   // ── coin identity ────────────────────────────────────────────────────────
   // Real logo, ticker and name per coin, resolved once by the token-meta
   // function and cached in Supabase, so a visitor gets it on the first paint
@@ -1284,7 +1391,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
 
   // me = the connected wallet address (identities are wallets now, not rows);
   // uid = the Supabase user id, only used for the admin-only trending list.
-  var S = { bets:[], me:null, uid:null, owner:false, canResolve:false, bal:0, names:{},
+  var S = { bets:[], me:null, uid:null, owner:false, canResolve:false, bal:0, names:{}, termsOk:false,
             tab:'open', view:'bet', coin:'', dir:'above', mode:'loading', busy:{}, wallet:null };
   var $ = function(id){ return document.getElementById(id); };
 
@@ -1468,7 +1575,24 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
         '<span>'+p.won+'W · '+p.lost+'L</span><span class="hide-s">'+fmtSol(p.locked)+'</span><span class="hide-s '+cls+'" style="text-align:right;font-weight:600">'+(p.net>0?'+':'')+fmtSol(p.net)+'</span></div>';
     }).join('');
   }
+  function renderNetbar(){
+    var el = $('netbar');
+    if(!el) return;
+    if(!LIVE_MONEY){
+      el.className = 'netbar';
+      el.textContent = 'Devnet — test SOL, no real value. Bets settle on the ibet escrow program.';
+      return;
+    }
+    // On mainnet the limits are read off the chain rather than hardcoded, so
+    // raising them through the multisig shows up here without a deploy.
+    el.className = 'netbar beta';
+    el.innerHTML = CFG
+      ? 'Beta · max <b>'+fmtSol(maxStake())+'</b> per bet'
+      : 'Beta · real SOL';
+  }
+
   function renderTop(){
+    renderNetbar();
     var bal = S.me ? '<b>'+fmtSol(available())+'</b> devnet SOL' : '';
     $('balpill').innerHTML=bal;
     $('balpill2').innerHTML = S.me ? 'Wallet <b>'+fmtSol(available())+'</b>' : '';
@@ -1484,6 +1608,15 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     } else if(CFG.paused){
       b.hidden=false;
       b.textContent='New bets are paused. Existing ones can still be cancelled, settled or refunded.';
+    } else if(GEO.blocked){
+      b.hidden=false;
+      b.innerHTML='<b>Betting isn’t available in your country.</b> You can still connect your wallet to cancel an open bet or claim a refund on one that has passed its grace window.';
+    } else if(CFG && CFG.maxOpenExposure && CFG.openExposure >= CFG.maxOpenExposure*0.8){
+      b.hidden=false;
+      var used = CFG.openExposure/LAMPORTS, capacity = CFG.maxOpenExposure/LAMPORTS;
+      b.textContent = CFG.openExposure >= CFG.maxOpenExposure
+        ? 'The program is at its total limit ('+fmtSol(capacity)+' in escrow). New bets resume as existing ones settle.'
+        : 'Filling up — '+fmtSol(used)+' of '+fmtSol(capacity)+' in escrow.';
     } else if(S.lastTx){
       b.hidden=false;
       b.innerHTML='Last transaction confirmed · <a class="exlink" href="'+esc(explorer('tx',S.lastTx))+'" target="_blank" rel="noopener noreferrer">view on Solana Explorer '+IC.ext+'</a>';
@@ -1934,6 +2067,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   }
   function createBet(){
     if(!S.me) return connect();
+    if(GEO.blocked || !hasAcceptedTerms()) return gateBetting(createBet);
     var t=wTarget(), st=wStake();
     if(!step1ok()||!step2ok()) return;
     if(!CFG) return toast('Still reading the escrow config — one moment.');
@@ -1968,6 +2102,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   function askTake(id){
     var b=find(id); if(!b) return;
     if(!S.me) return connect();
+    if(GEO.blocked || !hasAcceptedTerms()) return gateBetting(function(){ askTake(id); });
     if(b.creator===S.me) return toast('You can’t take your own bet.');
     if(b.stake>available()+1e-9) return toast('Not enough devnet SOL — you have '+fmtSol(available())+'.');
     var sp = split(b.stake);

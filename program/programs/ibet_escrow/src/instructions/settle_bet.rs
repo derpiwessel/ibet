@@ -17,6 +17,7 @@ use crate::{
 pub struct SettleBet<'info> {
     pub resolver: Signer<'info>,
     #[account(
+        mut,
         seeds = [CONFIG_SEED],
         bump = config.bump,
         has_one = resolver @ EscrowError::NotResolver,
@@ -119,6 +120,8 @@ pub fn handle_settle_bet(
 
     move_lamports(&bet_info, &ctx.accounts.fee_wallet.to_account_info(), fee)?;
     move_lamports(&bet_info, &winner_info, payout)?;
+
+    ctx.accounts.config.release_exposure(pot);
 
     let bet = &mut ctx.accounts.bet;
     bet.status = BetStatus::Settled;

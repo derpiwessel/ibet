@@ -143,10 +143,15 @@ fn the_account_sizes_the_frontend_hardcodes_still_hold() {
     // index.html filters `getProgramAccounts` on these byte sizes and decodes
     // the fields by hand, so a layout change has to fail here first.
     assert_eq!(8 + Bet::INIT_SPACE, 221, "BET_SIZE in index.html");
+
+    // Config grew when phase 3 added the exposure counter. The devnet
+    // deployment still runs the phase-2 program, whose config is 16 bytes
+    // shorter, so the site has to read both shapes — see CONFIG_SIZE_V1 and
+    // CONFIG_SIZE_V2 in index.html.
     assert_eq!(
         8 + ibet_escrow::state::Config::INIT_SPACE,
-        132,
-        "CONFIG_SIZE in index.html"
+        148,
+        "CONFIG_SIZE_V2 in index.html"
     );
 }
 
@@ -889,6 +894,235 @@ fn the_fee_wallet_may_also_be_the_winner() {
     // Creator receives the payout and the fee: the whole pot, less their stake.
     assert_eq!(env.bal(&creator), c0 - SOL + 2 * SOL);
     assert_eq!(env.bal(&bet_pda), 0);
+}
+
+// ── the caps that make a mainnet launch survivable ────────────────────────
+
+#[test]
+fn the_stake_cap_accepts_exactly_the_limit_and_refuses_a_lamport_more() {
+    let mut env = Env::with_limits(LIVE_MAX_STAKE, LIVE_MAX_EXPOSURE);
+    let creator = env.creator.insecure_clone();
+
+    let args = CreateBetArgs {
+        stake: LIVE_MAX_STAKE,
+        ..env.default_args(1)
+    };
+    let bet = env.open_bet_with(args);
+    assert_eq!(env.bet(&bet).stake, LIVE_MAX_STAKE);
+
+    let args = CreateBetArgs {
+        stake: LIVE_MAX_STAKE + 1,
+        ..env.default_args(2)
+    };
+    let ix = env.ix_create(&creator.pubkey(), args);
+    assert_escrow_err(env.send(&[ix], &[&creator]), EscrowError::StakeOutOfRange);
+}
+
+#[test]
+fn the_exposure_cap_refuses_the_bet_that_would_cross_it() {
+    // Room for four stakes exactly.
+    let cap = 4 * LIVE_MAX_STAKE;
+    let mut env = Env::with_limits(LIVE_MAX_STAKE, cap);
+    let creator = env.creator.insecure_clone();
+    let mut bets = vec![];
+
+    // Two matched bets fill it: two stakes each.
+    for id in 1..=2u64 {
+        let args = CreateBetArgs { stake: LIVE_MAX_STAKE, ..env.default_args(id) };
+        let bet = env.open_bet_with(args);
+        env.take(&bet);
+        bets.push(bet);
+    }
+    assert_eq!(env.config().open_exposure, cap);
+    assert_eq!(env.escrowed(&bets), cap);
+
+    // One more stake will not fit.
+    let args = CreateBetArgs { stake: LIVE_MAX_STAKE, ..env.default_args(3) };
+    let ix = env.ix_create(&creator.pubkey(), args);
+    assert_escrow_err(env.send(&[ix], &[&creator]), EscrowError::ExposureCapReached);
+}
+
+#[test]
+fn taking_a_bet_can_also_be_refused_by_the_exposure_cap() {
+    // Room for three stakes: two open bets fit, but only one of them can be
+    // matched, because taking adds the second stake.
+    let cap = 3 * LIVE_MAX_STAKE;
+    let mut env = Env::with_limits(LIVE_MAX_STAKE, cap);
+
+    let a = env.open_bet_with(CreateBetArgs { stake: LIVE_MAX_STAKE, ..env.default_args(1) });
+    let b = env.open_bet_with(CreateBetArgs { stake: LIVE_MAX_STAKE, ..env.default_args(2) });
+    env.take(&a);
+    assert_eq!(env.config().open_exposure, cap);
+
+    let taker = env.taker.insecure_clone();
+    let ix = env.ix_take(&taker.pubkey(), &b);
+    assert_escrow_err(env.send(&[ix], &[&taker]), EscrowError::ExposureCapReached);
+
+    // The open bet is untouched and can still be cancelled.
+    assert_eq!(env.bet(&b).status, BetStatus::Open);
+}
+
+#[test]
+fn every_ending_frees_room_under_the_cap() {
+    let cap = 6 * LIVE_MAX_STAKE;
+    let mut env = Env::with_limits(LIVE_MAX_STAKE, cap);
+    let (creator, taker, fee_wallet) = (
+        env.creator.pubkey(),
+        env.taker.pubkey(),
+        env.fee_wallet.pubkey(),
+    );
+
+    let settled = env.matched_bet_with(1, LIVE_MAX_STAKE);
+    let refunded = env.matched_bet_with(2, LIVE_MAX_STAKE);
+    let cancelled = env.open_bet_with(CreateBetArgs { stake: LIVE_MAX_STAKE, ..env.default_args(3) });
+    assert_eq!(env.config().open_exposure, 5 * LIVE_MAX_STAKE);
+
+    // Cancel gives back one stake.
+    let creator_kp = env.creator.insecure_clone();
+    let ix = env.ix_cancel(&creator_kp.pubkey(), &cancelled);
+    env.send(&[ix], &[&creator_kp]).unwrap();
+    assert_eq!(env.config().open_exposure, 4 * LIVE_MAX_STAKE);
+
+    // Settling gives back a whole pot.
+    env.advance(7 * DAY);
+    let resolver = env.resolver.insecure_clone();
+    let ix = env.ix_settle(
+        &resolver.pubkey(), &settled, &creator, &taker, &fee_wallet,
+        Outcome::CreatorWins, 9_000_000, env.mid_window(),
+    );
+    env.send(&[ix], &[&resolver]).unwrap();
+    assert_eq!(env.config().open_exposure, 2 * LIVE_MAX_STAKE);
+
+    // So does a refund.
+    env.advance(GRACE_SECS + 1);
+    let caller = env.payer.insecure_clone();
+    let ix = env.ix_refund(&caller.pubkey(), &refunded, &creator, &taker);
+    env.send(&[ix], &[]).unwrap();
+    assert_eq!(env.config().open_exposure, 0);
+    assert_eq!(env.escrowed(&[settled, refunded, cancelled]), 0);
+}
+
+#[test]
+fn room_freed_by_a_refund_can_be_used_again() {
+    let cap = 2 * LIVE_MAX_STAKE;
+    let mut env = Env::with_limits(LIVE_MAX_STAKE, cap);
+    let (creator, taker) = (env.creator.pubkey(), env.taker.pubkey());
+
+    let first = env.matched_bet_with(1, LIVE_MAX_STAKE);
+    let creator_kp = env.creator.insecure_clone();
+
+    // Full: nothing else fits.
+    let args = CreateBetArgs { stake: LIVE_MAX_STAKE, ..env.default_args(2) };
+    let ix = env.ix_create(&creator_kp.pubkey(), args);
+    assert_escrow_err(env.send(&[ix], &[&creator_kp]), EscrowError::ExposureCapReached);
+
+    // Refund the first, and the room comes back.
+    env.advance(7 * DAY + GRACE_SECS + 1);
+    let caller = env.payer.insecure_clone();
+    let ix = env.ix_refund(&caller.pubkey(), &first, &creator, &taker);
+    env.send(&[ix], &[]).unwrap();
+    assert_eq!(env.config().open_exposure, 0);
+
+    let args = CreateBetArgs { stake: LIVE_MAX_STAKE, ..env.default_args(3) };
+    let bet = env.open_bet_with(args);
+    assert_eq!(env.config().open_exposure, LIVE_MAX_STAKE);
+    assert_eq!(env.escrowed(&[bet]), LIVE_MAX_STAKE);
+}
+
+#[test]
+fn the_counter_always_matches_what_is_really_escrowed() {
+    // Walks a mixed set of bets through every ending, checking after each step
+    // that the number on the config is the number in the accounts.
+    let mut env = Env::with_limits(LIVE_MAX_STAKE, LIVE_MAX_EXPOSURE);
+    let (creator, taker, fee_wallet) = (
+        env.creator.pubkey(),
+        env.taker.pubkey(),
+        env.fee_wallet.pubkey(),
+    );
+    let mut all = vec![];
+    let check = |env: &Env, all: &Vec<Pubkey>| {
+        assert_eq!(
+            env.config().open_exposure,
+            env.escrowed(all),
+            "exposure counter drifted from the escrowed lamports"
+        );
+    };
+
+    for id in 1..=3u64 {
+        let args = CreateBetArgs { stake: LIVE_MAX_STAKE, ..env.default_args(id) };
+        all.push(env.open_bet_with(args));
+        check(&env, &all);
+    }
+    env.take(&all[0]);
+    check(&env, &all);
+    env.take(&all[1]);
+    check(&env, &all);
+
+    let creator_kp = env.creator.insecure_clone();
+    let ix = env.ix_cancel(&creator_kp.pubkey(), &all[2]);
+    env.send(&[ix], &[&creator_kp]).unwrap();
+    check(&env, &all);
+
+    env.advance(7 * DAY);
+    let resolver = env.resolver.insecure_clone();
+    let ix = env.ix_settle(
+        &resolver.pubkey(), &all[0], &creator, &taker, &fee_wallet,
+        Outcome::TakerWins, 1_000, env.window_end(),
+    );
+    env.send(&[ix], &[&resolver]).unwrap();
+    check(&env, &all);
+
+    env.advance(GRACE_SECS + 1);
+    let caller = env.payer.insecure_clone();
+    let ix = env.ix_refund(&caller.pubkey(), &all[1], &creator, &taker);
+    env.send(&[ix], &[]).unwrap();
+    check(&env, &all);
+    assert_eq!(env.config().open_exposure, 0);
+}
+
+#[test]
+fn the_cap_cannot_be_set_below_one_whole_bet() {
+    let mut env = Env::with_limits(LIVE_MAX_STAKE, LIVE_MAX_EXPOSURE);
+    let admin = env.admin.insecure_clone();
+
+    // A ceiling under two stakes would leave the program unable to match a
+    // single bet at its own maximum.
+    let ix = env.ix_update_config(
+        &admin.pubkey(),
+        UpdateConfigArgs {
+            max_open_exposure: Some(2 * LIVE_MAX_STAKE - 1),
+            ..Default::default()
+        },
+    );
+    assert_escrow_err(env.send(&[ix], &[&admin]), EscrowError::InvalidExposureCap);
+
+    // Exactly two stakes is fine.
+    let ix = env.ix_update_config(
+        &admin.pubkey(),
+        UpdateConfigArgs {
+            max_open_exposure: Some(2 * LIVE_MAX_STAKE),
+            ..Default::default()
+        },
+    );
+    env.send(&[ix], &[&admin]).unwrap();
+    assert_eq!(env.config().max_open_exposure, 2 * LIVE_MAX_STAKE);
+}
+
+#[test]
+fn only_the_admin_can_raise_the_cap() {
+    let mut env = Env::with_limits(LIVE_MAX_STAKE, LIVE_MAX_EXPOSURE);
+    for signer in [env.resolver.insecure_clone(), Keypair::new()] {
+        env.svm.airdrop(&signer.pubkey(), SOL).unwrap();
+        let ix = env.ix_update_config(
+            &signer.pubkey(),
+            UpdateConfigArgs {
+                max_open_exposure: Some(1_000 * SOL),
+                ..Default::default()
+            },
+        );
+        assert_escrow_err(env.send(&[ix], &[&signer]), EscrowError::NotAdmin);
+    }
+    assert_eq!(env.config().max_open_exposure, LIVE_MAX_EXPOSURE);
 }
 
 // ── touch to win ──────────────────────────────────────────────────────────

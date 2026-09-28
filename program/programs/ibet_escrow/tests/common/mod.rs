@@ -34,11 +34,16 @@ pub const MINUTE: i64 = 60;
 pub const HOUR: i64 = 3_600;
 pub const DAY: i64 = 86_400;
 
-/// The phase 1 production values.
+/// Room enough for the behavioural tests to use whole-SOL stakes.
 pub const FEE_BPS: u16 = 200;
 pub const MIN_STAKE: u64 = SOL / 100;
 pub const MAX_STAKE: u64 = 5 * SOL;
 pub const GRACE_SECS: i64 = 48 * 3_600;
+pub const MAX_EXPOSURE: u64 = 1_000 * SOL;
+
+/// What phase 3 actually ships on mainnet, exercised by its own tests.
+pub const LIVE_MAX_STAKE: u64 = SOL / 10;
+pub const LIVE_MAX_EXPOSURE: u64 = 10 * SOL;
 
 /// A plausible "now" to start from; LiteSVM's default clock sits at 0.
 pub const BASE_TIME: i64 = 1_800_000_000;
@@ -61,10 +66,19 @@ pub struct Env {
 
 impl Env {
     pub fn new() -> Self {
-        Self::with_fee_bps(FEE_BPS)
+        Self::build(FEE_BPS, MAX_STAKE, MAX_EXPOSURE)
     }
 
     pub fn with_fee_bps(fee_bps: u16) -> Self {
+        Self::build(fee_bps, MAX_STAKE, MAX_EXPOSURE)
+    }
+
+    /// An environment configured the way mainnet is.
+    pub fn with_limits(max_stake: u64, max_open_exposure: u64) -> Self {
+        Self::build(FEE_BPS, max_stake, max_open_exposure)
+    }
+
+    fn build(fee_bps: u16, max_stake: u64, max_open_exposure: u64) -> Self {
         let program_id = ibet_escrow::id();
         let mut svm = LiteSVM::new();
         let bytes = include_bytes!(concat!(
@@ -106,8 +120,9 @@ impl Env {
             fee_wallet: env.fee_wallet.pubkey(),
             fee_bps,
             min_stake: MIN_STAKE,
-            max_stake: MAX_STAKE,
+            max_stake,
             grace_secs: GRACE_SECS,
+            max_open_exposure,
         };
         let ix = Instruction::new_with_bytes(
             program_id,
@@ -174,6 +189,20 @@ impl Env {
         self.svm.get_balance(key).unwrap_or(0)
     }
 
+    pub fn config(&self) -> ibet_escrow::state::Config {
+        let account = self.svm.get_account(&self.config).expect("config is gone");
+        let mut data: &[u8] = &account.data;
+        <ibet_escrow::state::Config as AccountDeserialize>::try_deserialize(&mut data)
+            .expect("config did not deserialize")
+    }
+
+    /// What the given bet accounts are actually holding in escrow, rent aside.
+    /// `config().open_exposure` has to equal this after every path.
+    pub fn escrowed(&self, bets: &[Pubkey]) -> u64 {
+        let rent = self.bet_rent();
+        bets.iter().map(|b| self.bal(b).saturating_sub(rent)).sum()
+    }
+
     /// Rent the bet account holds on top of the two stakes.
     pub fn bet_rent(&self) -> u64 {
         self.svm
@@ -217,6 +246,7 @@ impl Env {
             &ibet_escrow::instruction::CancelBet {}.data(),
             ibet_escrow::accounts::CancelBet {
                 creator: *creator,
+                config: self.config,
                 bet: *bet,
             }
             .to_account_metas(None),
@@ -323,6 +353,14 @@ impl Env {
         let bet = self.bet_pda(&creator.pubkey(), args.bet_id);
         let ix = self.ix_create(&creator.pubkey(), args);
         self.send(&[ix], &[&creator]).unwrap();
+        bet
+    }
+
+    /// A matched bet at a given stake, for the cap tests.
+    pub fn matched_bet_with(&mut self, bet_id: u64, stake: u64) -> Pubkey {
+        let args = CreateBetArgs { stake, ..self.default_args(bet_id) };
+        let bet = self.open_bet_with(args);
+        self.take(&bet);
         bet
     }
 

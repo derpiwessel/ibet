@@ -11,7 +11,7 @@ use crate::{
 pub struct TakeBet<'info> {
     #[account(mut)]
     pub taker: Signer<'info>,
-    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump)]
     pub config: Account<'info, Config>,
     #[account(
         mut,
@@ -35,6 +35,7 @@ pub fn handle_take_bet(ctx: Context<TakeBet>) -> Result<()> {
     );
 
     let stake = ctx.accounts.bet.stake;
+    ctx.accounts.config.add_exposure(stake)?;
 
     // Escrow the taker's matching stake.
     anchor_lang::system_program::transfer(

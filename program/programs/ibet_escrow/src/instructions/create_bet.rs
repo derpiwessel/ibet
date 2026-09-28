@@ -28,7 +28,7 @@ pub struct CreateBetArgs {
 pub struct CreateBet<'info> {
     #[account(mut)]
     pub creator: Signer<'info>,
-    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump)]
     pub config: Account<'info, Config>,
     /// Holds the escrowed lamports on top of its own rent.
     #[account(
@@ -68,6 +68,9 @@ pub fn handle_create_bet(ctx: Context<CreateBet>, args: CreateBetArgs) -> Result
         };
         require!(consistent, EscrowError::TargetContradictsDirection);
     }
+
+    // Reserve room under the ceiling before any lamports move.
+    ctx.accounts.config.add_exposure(args.stake)?;
 
     let now = Clock::get()?.unix_timestamp;
 

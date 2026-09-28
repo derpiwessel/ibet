@@ -22,6 +22,36 @@ pub struct Config {
     /// already in escrow always have a way out.
     pub paused: bool,
     pub bump: u8,
+    /// Lamports the program is holding right now across every Open and Matched
+    /// bet: one stake for an open bet, two for a matched one. Kept as a running
+    /// total so the ceiling can be checked without reading every account.
+    ///
+    /// The invariant, which the tests assert after every path: this always
+    /// equals the sum of the stakes actually escrowed.
+    pub open_exposure: u64,
+    /// The most the program will ever hold at once. A bug, a bad candle or a
+    /// stolen resolver key cannot cost more than what is inside this ceiling.
+    /// Only the admin — the multisig on mainnet — can raise it.
+    pub max_open_exposure: u64,
+}
+
+impl Config {
+    /// Escrow going in. Refuses to cross the ceiling rather than wrapping.
+    pub fn add_exposure(&mut self, lamports: u64) -> Result<()> {
+        let next = self
+            .open_exposure
+            .checked_add(lamports)
+            .ok_or(EscrowError::MathOverflow)?;
+        require!(next <= self.max_open_exposure, EscrowError::ExposureCapReached);
+        self.open_exposure = next;
+        Ok(())
+    }
+
+    /// Escrow coming out. Saturates at zero: a counter that somehow drifted low
+    /// must never block a payout or a refund.
+    pub fn release_exposure(&mut self, lamports: u64) {
+        self.open_exposure = self.open_exposure.saturating_sub(lamports);
+    }
 }
 
 /// Who the resolver says won. The program cannot see price history, so it
