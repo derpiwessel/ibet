@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-09-28T13:45:02.075Z",
+        "reason": "Pre-existing brand typography: index.html has used Inter/Inter Tight since before this project began; terms.html matches it deliberately. The phase 3 brief requires keeping the phase 2 design unchanged."
+      }
+    ]
+  }
+}
