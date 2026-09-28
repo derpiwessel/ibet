@@ -31,7 +31,7 @@ before the deadline, which can only be settled once that deadline passes.
 | Resolver | `FYjinyZZyVks7eQfexDffM9TDFJyb6VEyAPzEFiLDEwj` (the keeper) |
 | Fee wallet | `EDiALz4fYTJcNaTcoAuuo6X5rWsvys199dnwgeWCyW5Q` (the owner) |
 | Admin, upgrade authority | `GXckV6zEZwjMWgXdxd6bbEdBKARSGKKpWfp9GB4YcUNZ` (the deployer, **temporary**) |
-| Fee | 200 bps · stakes 0.01–5 SOL · grace 48h |
+| Fee | 200 bps · stakes 0.01–5 SOL · grace 48h · lengths 5 min–30 days |
 
 Admin rights and the upgrade authority still sit with the deployer so the
 program can be patched while it is being tested. Move both to the owner's
@@ -62,7 +62,9 @@ program, and the site reads them straight off the chain.
 | Open and live bets | `getProgramAccounts` on the program |
 | Wallet balance | `getBalance` |
 | Fee, stake limits, grace window, pause | the on-chain `Config` account |
-| Live market caps and charts | DexScreener |
+| Live market caps | DexScreener |
+| Charts | GeckoTerminal candles × supply, drawn with TradingView Lightweight Charts |
+| Coin logo, ticker and name | Supabase `token_meta`, filled by the token-meta function |
 | Settled history and leaderboard | Supabase `chain_bets` + `settlements`, written by the keeper |
 | Sign-in, `admins`, `trending` | Supabase |
 
@@ -113,7 +115,9 @@ market caps, the stake, the timeline and the outcome.
 
 Rules worth knowing:
 
-- Durations are whitelisted to 1, 3, 5, 7, 14 and 30 days.
+- A bet runs for anything from **5 minutes to 30 days**. Five minutes is the
+  floor because settlement reads 1-minute candles; less than that and a bet
+  would be decided by one or two of them.
 - Touching **exactly** the target counts, in both directions.
 - The program cannot see price history, so it checks what it can. A
   `CreatorWins` settlement must carry a market cap that really reaches the
@@ -129,6 +133,30 @@ Rules worth knowing:
 - Every matched bet ends in Settled or Refunded, and every open bet can be
   cancelled, so no path leaves funds stuck.
 
+## Coin identity
+
+Every coin shows its real logo and ticker. The `token-meta` Edge Function
+resolves them in order — DexScreener, then GeckoTerminal, then on chain — and
+caches the result in `token_meta`, which the site reads and only the function
+writes. Rows older than 24h are refreshed; misses are cached too, so a coin with
+no metadata anywhere is not looked up again by every visitor all day.
+
+The on-chain step handles both shapes: pump.fun issues **Token-2022** mints that
+carry their metadata as a TLV extension inside the mint account, while classic
+SPL mints have a Metaplex metadata PDA. Metadata URIs live on IPFS, where a
+single gateway is regularly unreachable, so several are tried.
+
+```bash
+# resolve and cache
+curl "$SUPABASE_URL/functions/v1/token-meta?ca=<mint>,<mint>"
+# force one step, to check a fallback a working first step would hide
+curl "$SUPABASE_URL/functions/v1/token-meta?ca=<mint>&only=chain"
+```
+
+Images render in an `<img>` with `referrerpolicy="no-referrer"` and
+`loading="lazy"`, with the coloured badge behind them, so a logo that fails to
+load simply uncovers it again.
+
 ## The keeper
 
 `keeper/index.ts` is a Supabase Edge Function that `pg_cron` fires every minute.
@@ -140,8 +168,11 @@ Each run:
 3. converts each candle's high (Higher) or low (Lower) to a market cap;
 4. on the first candle inside `[taken_at, expires_at]` that reaches the target,
    sends `settle_bet(CreatorWins, that market cap, that candle's time)`;
-5. once the deadline has passed and the whole window has been checked without a
-   touch, sends `settle_bet(TakerWins, …)`;
+5. once the deadline has passed **and** the candles reach it, sends
+   `settle_bet(TakerWins, …)` — the source publishes a minute or two late,
+   which is a large slice of a five-minute bet, so it waits rather than calling
+   it early and records `waiting for candles to cover the whole window` while
+   it does;
 6. writes the deciding candle, its pool, its source and the transaction
    signature into `settlements`.
 
