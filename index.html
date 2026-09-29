@@ -441,13 +441,18 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     },
     mainnet: {
       cluster:   'mainnet-beta',
-      // TODO(owner): a Helius (or equivalent) URL whose key is restricted to
-      // the i-bet.fun origin. Every free public mainnet RPC refuses browser
-      // traffic, so betting cannot work until this is set.
-      rpcUrl:    '',
+      // Helius, with the key restricted to the i-bet.fun origins. That
+      // restriction is the point — the key sits in client-side source, so
+      // what protects it is that Helius refuses it from anywhere else.
+      //
+      // It therefore does not work from localhost or from a preview URL.
+      // That is deliberate, not a bug to route around: previews stay on
+      // devnet, which is where testing belongs.
+      rpcUrl:    'https://mainnet.helius-rpc.com/?api-key=bff9fa40-7271-4f02-9688-ff0b559b09d2',
       // TODO(owner): filled in once the mainnet program is deployed.
       programId: '',
-      dataRpcUrl: '',
+      // Same endpoint: on mainnet the escrow and the coins are on one chain.
+      dataRpcUrl: 'https://mainnet.helius-rpc.com/?api-key=bff9fa40-7271-4f02-9688-ff0b559b09d2',
       live: true
     }
   };
@@ -860,6 +865,29 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   // when it resolves a bet, so what you see is what you are judged on. Supply
   // comes from the chain; price from DexScreener's deepest pool.
   var MCAP_TTL = 30000;
+  // Which pool the coin is judged on. Depth is what makes a price hard to push
+  // around, so the deepest pool is the one to trust — but only among the pools
+  // actually trading. A deep pool that has gone quiet produces no candles, and
+  // a bet with no candles cannot settle either way; it sits until the 48-hour
+  // refund. The keeper picks the pool with this exact rule, so the chart shows
+  // the pool the bet resolves on.
+  function pickPool(pairs){
+    var liq = function(p){ return (p.liquidity && p.liquidity.usd) || 0; };
+    var trades = function(p, w){
+      var t = p.txns && p.txns[w];
+      return t ? ((t.buys||0) + (t.sells||0)) : 0;
+    };
+    var windows = ['m5','h1'];
+    for(var i=0;i<windows.length;i++){
+      var active = pairs.filter(function(p){ return trades(p, windows[i]) > 0; });
+      if(active.length){
+        active.sort(function(a,b){ return liq(b)-liq(a); });
+        return active[0];
+      }
+    }
+    return pairs.slice().sort(function(a,b){ return liq(b)-liq(a); })[0];
+  }
+
   function prettyDex(id){
     if(!id) return '';
     var known = { pumpswap:'PumpSwap', raydium:'Raydium', meteora:'Meteora', orca:'Orca', pumpfun:'Pump.fun' };
@@ -895,10 +923,9 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     var job = fetch('https://api.dexscreener.com/latest/dex/tokens/'+encodeURIComponent(ca))
       .then(function(r){ return r.ok ? r.json() : null; }, function(){ return null; })
       .then(function(json){
-        var pairs = (json && json.pairs || []).filter(function(p){ return p.chainId==='solana'; });
+        var pairs = (json && json.pairs || []).filter(function(p){ return p.chainId==='solana' && p.pairAddress; });
         if(!pairs.length){ return (mcapCache[ca]={at:Date.now(), mcap:null, price:null, pool:null}); }
-        pairs.sort(function(a,b){ return (b.liquidity&&b.liquidity.usd||0)-(a.liquidity&&a.liquidity.usd||0); });
-        var top=pairs[0], price=parseFloat(top.priceUsd), fdv=parseFloat(top.fdv);
+        var top = pickPool(pairs), price=parseFloat(top.priceUsd), fdv=parseFloat(top.fdv);
         var result = {
           at:Date.now(), price:isFinite(price)?price:null, pool:top.pairAddress||null, mcap:null,
           pair: (top.baseToken&&top.baseToken.symbol ? top.baseToken.symbol : shortCa(ca))+

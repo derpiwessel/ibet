@@ -24,10 +24,12 @@ import {
 const PROGRAM_ID = new PublicKey("51Qu3DKZZ9bHJKiNyXhKcTp7PqJNW1YqVcx7Cqm6Vyv");
 const ESCROW_RPC = "https://api.devnet.solana.com";
 const DATA_RPC = "https://api.mainnet-beta.solana.com";
-const CLUSTER = "devnet";
 
 const BET_SIZE = 221;
-const CONFIG_SIZE = 132;
+// Phase 3 appended the exposure counter. Devnet still runs the phase-2
+// program, whose config is 16 bytes shorter, so both are readable.
+const CONFIG_SIZE_V1 = 132;
+const CONFIG_SIZE_V2 = 148;
 const BET_DISC = [147, 23, 35, 59, 15, 75, 155, 32];
 const IX_SETTLE = [115, 55, 234, 177, 227, 4, 10, 67];
 
@@ -39,6 +41,22 @@ const OUTCOME_TAKER_WINS = 1;
 const CANDLE_PAGE = 1000;
 const MAX_PAGES = 5;
 const SOURCE = "geckoterminal:ohlcv/minute";
+
+// ── the sanity check ─────────────────────────────────────────────────────────
+// GeckoTerminal decides every outcome; a second provider only guards against
+// its data being broken. It never changes who wins.
+//
+// It is called only when a settlement is actually about to happen. Calling it
+// once per run is not affordable: the keeper wakes every minute, which is
+// ~43,200 runs a month, already past the free allowance with a single live bet
+// before any other cost. At settlement time it is a handful of calls a day.
+const SECOND_PROVIDER = "birdeye";
+const SANITY_TOLERANCE = 0.05;      // 5%
+const SKEW_SECS = 60;               // ±1 minute, for clock skew between sources
+/// Hard ceiling on calls per calendar month, well inside the free allowance.
+/// Past it the keeper stops asking and settles on the deciding source alone
+/// rather than stalling — and says so, loudly.
+const SECOND_BUDGET = 1500;
 
 const escrow = new Connection(ESCROW_RPC, "confirmed");
 const mainnet = new Connection(DATA_RPC, "confirmed");
@@ -126,9 +144,13 @@ const configPda = () =>
 
 async function readConfig() {
   const info = await escrow.getAccountInfo(configPda());
-  if (!info || info.data.length !== CONFIG_SIZE) throw new Error("config account missing");
+  if (!info) throw new Error("config account missing");
+  const len = info.data.length;
+  if (len !== CONFIG_SIZE_V1 && len !== CONFIG_SIZE_V2) {
+    throw new Error(`unexpected config size ${len}`);
+  }
   const r = new Rd(new Uint8Array(info.data)).skip(8);
-  return {
+  const config = {
     admin: r.key(),
     resolver: r.key(),
     feeWallet: r.key(),
@@ -137,7 +159,15 @@ async function readConfig() {
     maxStake: r.u64(),
     graceSecs: r.i64(),
     paused: r.bool(),
+    openExposure: 0,
+    maxOpenExposure: 0,
   };
+  r.u8(); // bump
+  if (len === CONFIG_SIZE_V2) {
+    config.openExposure = r.u64();
+    config.maxOpenExposure = r.u64();
+  }
+  return config;
 }
 
 // ── market data ──────────────────────────────────────────────────────────────
@@ -160,16 +190,44 @@ async function totalSupply(mint: PublicKey): Promise<number | null> {
   }
 }
 
-/// The deepest pool for a token, which is the one whose candles we trust.
+/// Which pool a bet is judged on.
+///
+/// Depth is what makes a price hard to push around, so the deepest pool is the
+/// one to trust — but only among the pools that are actually trading. A deep
+/// pool that has gone quiet produces no candles at all, and a bet with no
+/// candles cannot be settled either way: it just sits until the 48-hour
+/// refund. That is not a hypothetical. PAID's deepest pool sat for eleven
+/// minutes with zero trades while two shallower ones traded throughout.
+///
+/// So: prefer pools trading in the last five minutes, then the last hour, and
+/// within each group take the deepest. Falling back to raw depth only when
+/// nothing at all is trading, where a refund is the honest outcome anyway.
+///
+/// index.html picks the pool the same way, so the chart shows the pool the bet
+/// resolves on.
+export function pickPool(pairs: any[]): string | null {
+  const solana = (pairs ?? []).filter((p: any) => p?.chainId === "solana" && p?.pairAddress);
+  if (!solana.length) return null;
+  const liq = (p: any) => p.liquidity?.usd ?? 0;
+  const trades = (p: any, w: "m5" | "h1") =>
+    (p.txns?.[w]?.buys ?? 0) + (p.txns?.[w]?.sells ?? 0);
+
+  for (const window of ["m5", "h1"] as const) {
+    const active = solana.filter((p: any) => trades(p, window) > 0);
+    if (active.length) {
+      active.sort((a: any, b: any) => liq(b) - liq(a));
+      return active[0].pairAddress;
+    }
+  }
+  solana.sort((a: any, b: any) => liq(b) - liq(a));
+  return solana[0].pairAddress;
+}
+
 async function mainPool(mint: PublicKey): Promise<string | null> {
   try {
     const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint.toBase58()}`);
     if (!res.ok) return null;
-    const json = await res.json();
-    const pairs = (json.pairs ?? []).filter((p: any) => p.chainId === "solana");
-    if (!pairs.length) return null;
-    pairs.sort((a: any, b: any) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
-    return pairs[0].pairAddress ?? null;
+    return pickPool((await res.json()).pairs ?? []);
   } catch {
     return null;
   }
@@ -209,6 +267,114 @@ async function candlesSince(pool: string, fromTs: number): Promise<Candle[]> {
   return out;
 }
 
+// ── alerts ───────────────────────────────────────────────────────────────────
+
+/// Recorded whether or not a webhook is configured, so nothing is lost while
+/// one is still being set up.
+async function alert(
+  level: "info" | "warn" | "error",
+  kind: string,
+  message: string,
+  detail: Record<string, unknown> = {},
+) {
+  let delivered = false;
+  try {
+    const { data: url } = await db.rpc("alert_webhook_get");
+    if (url) {
+      const res = await fetch(url as string, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: `[${level}] ${message}` }),
+        signal: AbortSignal.timeout(5000),
+      });
+      delivered = res.ok;
+    }
+  } catch { /* a failed alert must never stop a settlement */ }
+  try {
+    await db.from("alerts").insert({ level, kind, message, detail, delivered });
+  } catch { /* same */ }
+}
+
+// ── second source ────────────────────────────────────────────────────────────
+
+const monthKey = () => new Date().toISOString().slice(0, 7);
+
+type SecondCheck = {
+  sanity: "ok" | "deviation" | "unavailable" | "skipped";
+  value: number | null;
+  deviation: number | null;
+};
+
+/// One call per deciding candle, memoised for the run.
+const secondCache = new Map<string, number | null>();
+
+async function birdeyeExtreme(
+  mint: string,
+  minuteTs: number,
+  wantHigh: boolean,
+): Promise<number | null> {
+  const key = `${mint}|${minuteTs}|${wantHigh}`;
+  if (secondCache.has(key)) return secondCache.get(key)!;
+
+  const { data: apiKey } = await db.rpc("birdeye_key_get");
+  if (!apiKey) return null;
+
+  const url = new URL("https://public-api.birdeye.so/defi/ohlcv");
+  url.searchParams.set("address", mint);
+  url.searchParams.set("type", "1m");
+  url.searchParams.set("time_from", String(minuteTs - SKEW_SECS));
+  url.searchParams.set("time_to", String(minuteTs + SKEW_SECS));
+
+  let value: number | null = null;
+  try {
+    const res = await fetch(url, {
+      headers: { "X-API-KEY": apiKey as string, "x-chain": "solana", accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    await db.rpc("provider_usage_bump", { p_provider: SECOND_PROVIDER, p_month: monthKey() });
+    if (res.ok) {
+      const items = (await res.json())?.data?.items ?? [];
+      const picked = items
+        .map((i: any) => Number(wantHigh ? i.h : i.l))
+        .filter((n: number) => Number.isFinite(n) && n > 0);
+      if (picked.length) value = wantHigh ? Math.max(...picked) : Math.min(...picked);
+    }
+  } catch { /* treated as unavailable below */ }
+
+  secondCache.set(key, value);
+  return value;
+}
+
+/// Compares the deciding market cap with the second source over the same
+/// minute. Within tolerance settles; a real disagreement does not.
+async function sanityCheck(
+  mint: string,
+  minuteTs: number,
+  wantHigh: boolean,
+  decidingMcap: number,
+  supply: number,
+): Promise<SecondCheck> {
+  const { data: used } = await db
+    .from("provider_usage").select("calls")
+    .eq("provider", SECOND_PROVIDER).eq("month", monthKey()).maybeSingle();
+  if ((used?.calls ?? 0) >= SECOND_BUDGET) {
+    await alert("warn", "second-source-budget",
+      `${SECOND_PROVIDER} monthly budget of ${SECOND_BUDGET} calls is spent; settling on ${SOURCE} alone`);
+    return { sanity: "skipped", value: null, deviation: null };
+  }
+
+  const price = await birdeyeExtreme(mint, minuteTs, wantHigh);
+  if (price === null) return { sanity: "unavailable", value: null, deviation: null };
+
+  const second = price * supply;
+  const deviation = decidingMcap > 0 ? Math.abs(decidingMcap - second) / decidingMcap : 0;
+  return {
+    sanity: deviation <= SANITY_TOLERANCE ? "ok" : "deviation",
+    value: second,
+    deviation,
+  };
+}
+
 // ── settling ─────────────────────────────────────────────────────────────────
 
 function ixSettle(
@@ -227,7 +393,14 @@ function ixSettle(
   ]);
   return new TransactionInstruction({
     programId: PROGRAM_ID,
-    data,
+    // web3.js types this as a Node Buffer, but a Uint8Array is what actually
+    // gets serialised and what the Deno runtime hands us — this is how the
+    // keeper has been settling bets since phase 2. Taking the type from the
+    // library itself keeps `deno check` useful as a gate instead of
+    // permanently red on a types-only mismatch.
+    data: data as unknown as ConstructorParameters<
+      typeof TransactionInstruction
+    >[0]["data"],
     keys: [
       { pubkey: keeper, isSigner: true, isWritable: true },
       { pubkey: configPda(), isSigner: false, isWritable: false },
@@ -371,6 +544,31 @@ async function run() {
       const coveredThroughEnd = newestChecked >= bet.expiresAt;
 
       if (hit) {
+        const check = await sanityCheck(
+          bet.tokenMint.toBase58(), hit.t, higher, hitMcap, supply,
+        );
+        if (check.sanity === "deviation") {
+          // The two sources disagree about the candle that would decide this.
+          // Do not pay anyone on data we cannot corroborate; try again next run.
+          const pct = ((check.deviation ?? 0) * 100).toFixed(1);
+          await alert("error", "sanity-block",
+            `Held back a creator win on ${bet.address}: ${SOURCE} says $${Math.round(hitMcap)}, ` +
+            `${SECOND_PROVIDER} says $${Math.round(check.value ?? 0)} (${pct}% apart)`,
+            { bet: bet.address, deciding: hitMcap, second: check.value, deviation_pct: pct });
+          await mirror(bet, {
+            pool_address: pool,
+            checked_through: new Date(newestChecked * 1000).toISOString(),
+            keeper_note: `sanity check held this back: sources ${pct}% apart`,
+          });
+          results.push({ bet: bet.address, blocked: "sanity", deviation_pct: pct });
+          continue;
+        }
+        if (check.sanity === "unavailable") {
+          await alert("warn", "second-source-down",
+            `${SECOND_PROVIDER} had no data for ${bet.tokenMint.toBase58()}; ` +
+            `settled ${bet.address} on ${SOURCE} alone`);
+        }
+
         const sig = await send(
           keeper,
           ixSettle(keeper.publicKey, bet, config.feeWallet, OUTCOME_CREATOR_WINS, hitMcap, hit.t),
@@ -385,7 +583,16 @@ async function run() {
           source: SOURCE,
           pool_address: pool,
           tx_signature: sig,
+          deciding_provider: SOURCE,
+          deciding_value_usd: Math.round(hitMcap),
+          second_provider: SECOND_PROVIDER,
+          second_value_usd: check.value === null ? null : Math.round(check.value),
+          deviation_pct: check.deviation === null ? null : +(check.deviation * 100).toFixed(3),
+          sanity: check.sanity,
         }, { onConflict: "bet_address" });
+        await alert("info", "settled",
+          `Creator won ${bet.address} at $${Math.round(hitMcap)} (target $${bet.targetMcapUsd})`,
+          { outcome: "creator_wins", sanity: check.sanity, sig });
         await mirror({ ...bet, status: "settled", winner: bet.creator }, {
           observed_mcap_usd: Math.round(hitMcap),
           observed_at: new Date(hit.t * 1000).toISOString(),
@@ -399,6 +606,40 @@ async function run() {
       if (now >= bet.expiresAt && coveredThroughEnd) {
         const last = inWindow[inWindow.length - 1] ?? candles[candles.length - 1];
         const lastMcap = last.close * supply;
+
+        // "Never touched" is a claim about the whole window, so the check runs
+        // on the point that came closest to the target — if the second source
+        // saw that go further, the claim is not safe to act on.
+        let peak = last;
+        let peakVal = higher ? last.high : last.low;
+        for (const c of inWindow) {
+          const v = higher ? c.high : c.low;
+          if (higher ? v > peakVal : v < peakVal) { peakVal = v; peak = c; }
+        }
+        const check = await sanityCheck(
+          bet.tokenMint.toBase58(), peak.t, higher, peakVal * supply, supply,
+        );
+        if (check.sanity === "deviation") {
+          const pct = ((check.deviation ?? 0) * 100).toFixed(1);
+          await alert("error", "sanity-block",
+            `Held back a taker win on ${bet.address}: at the window's extreme ${SOURCE} says ` +
+            `$${Math.round(peakVal * supply)}, ${SECOND_PROVIDER} says ` +
+            `$${Math.round(check.value ?? 0)} (${pct}% apart)`,
+            { bet: bet.address, deciding: peakVal * supply, second: check.value, deviation_pct: pct });
+          await mirror(bet, {
+            pool_address: pool,
+            checked_through: new Date(newestChecked * 1000).toISOString(),
+            keeper_note: `sanity check held this back: sources ${pct}% apart at the window extreme`,
+          });
+          results.push({ bet: bet.address, blocked: "sanity", deviation_pct: pct });
+          continue;
+        }
+        if (check.sanity === "unavailable") {
+          await alert("warn", "second-source-down",
+            `${SECOND_PROVIDER} had no data for ${bet.tokenMint.toBase58()}; ` +
+            `settled ${bet.address} on ${SOURCE} alone`);
+        }
+
         const sig = await send(
           keeper,
           ixSettle(
@@ -416,7 +657,16 @@ async function run() {
           source: SOURCE,
           pool_address: pool,
           tx_signature: sig,
+          deciding_provider: SOURCE,
+          deciding_value_usd: Math.round(peakVal * supply),
+          second_provider: SECOND_PROVIDER,
+          second_value_usd: check.value === null ? null : Math.round(check.value),
+          deviation_pct: check.deviation === null ? null : +(check.deviation * 100).toFixed(3),
+          sanity: check.sanity,
         }, { onConflict: "bet_address" });
+        await alert("info", "settled",
+          `Taker won ${bet.address}: never touched $${bet.targetMcapUsd}`,
+          { outcome: "taker_wins", sanity: check.sanity, sig });
         await mirror({ ...bet, status: "settled", winner: bet.taker }, {
           observed_mcap_usd: Math.round(lastMcap),
           observed_at: new Date(bet.expiresAt * 1000).toISOString(),
@@ -448,6 +698,12 @@ async function run() {
       await mirror(bet, { keeper_note: String(e).slice(0, 300) });
       results.push({ bet: bet.address, error: String(e).slice(0, 300) });
     }
+  }
+
+  if (config.maxOpenExposure && config.openExposure >= config.maxOpenExposure * 0.8) {
+    await alert("warn", "exposure-high",
+      `Escrow is at ${(config.openExposure / 1e9).toFixed(2)} SOL of a ` +
+      `${(config.maxOpenExposure / 1e9).toFixed(2)} SOL cap`);
   }
 
   return { ok: true, bets: bets.length, matched: matched.length, ms: Date.now() - started, results };
