@@ -129,12 +129,15 @@ const STATUS = ['Open', 'Matched', 'Settled', 'Cancelled', 'Refunded'];
 /// Retries anything that talks to an RPC. A failed request means "could not
 /// ask", never "the answer is no" — reading a dropped connection as a closed
 /// account would report a settlement that never happened.
-async function tolerant(label, fn, tries = 6) {
+/// Patient on purpose: name resolution here drops out for tens of seconds at a
+/// time, and giving up in the middle of a run with money in escrow is worse
+/// than waiting. Roughly a minute of attempts before it admits defeat.
+async function tolerant(label, fn, tries = 12) {
   let last;
   for (let i = 0; i < tries; i += 1) {
     try { return await fn(); } catch (e) { last = e; }
     process.stdout.write('!');
-    await new Promise((r) => setTimeout(r, 2_000 * (i + 1)));
+    await new Promise((r) => setTimeout(r, Math.min(2_000 * (i + 1), 6_000)));
   }
   throw new Error(`${label} failed ${tries} times: ${last?.message ?? last}`);
 }
