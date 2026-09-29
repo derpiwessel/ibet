@@ -449,8 +449,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       // That is deliberate, not a bug to route around: previews stay on
       // devnet, which is where testing belongs.
       rpcUrl:    'https://mainnet.helius-rpc.com/?api-key=bff9fa40-7271-4f02-9688-ff0b559b09d2',
-      // TODO(owner): filled in once the mainnet program is deployed.
-      programId: '',
+      programId: 'FTB9qgtwzRjSU3Hq5KwZmQkRWWxg8TqxwS2hxPetLt7W',
       // Same endpoint: on mainnet the escrow and the coins are on one chain.
       dataRpcUrl: 'https://mainnet.helius-rpc.com/?api-key=bff9fa40-7271-4f02-9688-ff0b559b09d2',
       live: true
@@ -1372,8 +1371,13 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   function loadHistory(){
     if(!sb) return Promise.resolve();
     return Promise.all([
-      sb.from('chain_bets').select('*').eq('status','settled').order('updated_at',{ascending:false}).limit(200),
-      sb.from('settlements').select('*').order('settled_at',{ascending:false}).limit(200)
+      // Devnet and mainnet share one database, so history is filtered by the
+      // chain this build talks to. Without it a mainnet visitor would be shown
+      // devnet bets as if they were real.
+      sb.from('chain_bets').select('*').eq('cluster',CLUSTER).eq('status','settled')
+        .order('updated_at',{ascending:false}).limit(200),
+      sb.from('settlements').select('*').eq('cluster',CLUSTER)
+        .order('settled_at',{ascending:false}).limit(200)
     ]).then(function(r){
       var rows = (r[0] && r[0].data) || [], evs = (r[1] && r[1].data) || [];
       HIST.evidence = {};

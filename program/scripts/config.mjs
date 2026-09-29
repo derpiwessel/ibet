@@ -2,7 +2,7 @@
 // Reads and writes the escrow's Config account from the command line.
 //
 //   node scripts/config.mjs show
-//   node scripts/config.mjs init     --owner <PUBKEY>
+//   node scripts/config.mjs init     --owner <PUBKEY> [--resolver <PUBKEY>]
 //   node scripts/config.mjs set      --paused true
 //   node scripts/config.mjs handover --owner <PUBKEY>
 //
@@ -19,7 +19,6 @@ import {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const IDL = JSON.parse(fs.readFileSync(path.join(here, '..', 'target', 'idl', 'ibet_escrow.json'), 'utf8'));
-const PROGRAM_ID = new PublicKey(IDL.address);
 const LAMPORTS = 1_000_000_000;
 
 const CLUSTERS = {
@@ -38,6 +37,10 @@ for (let i = 0; i < rest.length; i += 1) {
   const next = rest[i + 1];
   flags[key] = next && !next.startsWith('--') ? (i += 1, next) : 'true';
 }
+
+// The IDL names the mainnet program. Devnet runs an older deployment at its own
+// address, so it stays reachable through --program.
+const PROGRAM_ID = new PublicKey(flags.program ?? IDL.address);
 
 const cluster = flags.cluster ?? 'devnet';
 const url = flags.url ?? CLUSTERS[cluster] ?? cluster;
@@ -92,14 +95,29 @@ class Rd {
 
 const configPda = () => PublicKey.findProgramAddressSync([Buffer.from('config')], PROGRAM_ID)[0];
 
+// Phase 3 appended the exposure counter and its ceiling. Devnet still runs the
+// shorter phase-2 layout, so both are readable and the extra fields simply read
+// as absent there.
+const CONFIG_SIZE_V1 = 132;
+const CONFIG_SIZE_V2 = 148;
+
 async function readConfig(connection) {
   const info = await connection.getAccountInfo(configPda());
   if (!info) return null;
+  if (info.data.length !== CONFIG_SIZE_V1 && info.data.length !== CONFIG_SIZE_V2) {
+    die(`Config account is ${info.data.length} bytes — expected ${CONFIG_SIZE_V1} or ${CONFIG_SIZE_V2}.`);
+  }
   const r = new Rd(info.data).skip(8);
-  return {
+  const c = {
     admin: r.key(), resolver: r.key(), feeWallet: r.key(), feeBps: r.u16(),
     minStake: r.u64(), maxStake: r.u64(), graceSecs: r.i64(), paused: r.bool(),
   };
+  c.bump = r.u8();
+  if (info.data.length === CONFIG_SIZE_V2) {
+    c.openExposure = r.u64();
+    c.maxOpenExposure = r.u64();
+  }
+  return c;
 }
 
 function printConfig(c) {
@@ -111,7 +129,9 @@ function printConfig(c) {
   fee          ${c.feeBps} bps (${c.feeBps / 100}%)
   stake range  ${c.minStake / LAMPORTS} – ${c.maxStake / LAMPORTS} SOL
   grace        ${c.graceSecs}s (${(c.graceSecs / 3600).toFixed(1)}h)
-  paused       ${c.paused}
+  paused       ${c.paused}${c.maxOpenExposure === undefined ? '' : `
+  escrowed now ${c.openExposure / LAMPORTS} SOL
+  exposure cap ${c.maxOpenExposure / LAMPORTS} SOL`}
 `);
 }
 
@@ -147,11 +167,22 @@ async function main() {
     const minStake = Math.round(Number(flags.min ?? 0.01) * LAMPORTS);
     const maxStake = Math.round(Number(flags.max ?? 5) * LAMPORTS);
     const graceSecs = Number(flags.grace ?? 48 * 3600);
+    // Twice the stake cap is the floor the program enforces: a ceiling below one
+    // whole bet would make the program unusable.
+    const maxOpenExposure = Math.round(Number(flags.exposure ?? 10) * LAMPORTS);
+    if (maxOpenExposure < maxStake * 2) {
+      die(`--exposure ${maxOpenExposure / LAMPORTS} SOL is below two stakes (${(maxStake * 2) / LAMPORTS} SOL).`);
+    }
 
-    // The admin is whoever signs; resolver and fee wallet are set to the owner
-    // straight away, so the owner can settle and collect from the first bet.
+    // The admin is whoever signs. The fee wallet defaults to the owner, and so
+    // does the resolver — but on mainnet the resolver is the keeper's own key,
+    // which exists before the program does, so it can be named here and never
+    // needs a config change later.
+    const resolver = flags.resolver ? pubkeyFlag('resolver') : owner;
+    const feeWallet = flags['fee-wallet'] ? pubkeyFlag('fee-wallet') : owner;
     const data = new Buf().disc('initialize_config')
-      .key(owner).key(owner).u16(feeBps).u64(minStake).u64(maxStake).i64(graceSecs)
+      .key(resolver).key(feeWallet).u16(feeBps).u64(minStake).u64(maxStake).i64(graceSecs)
+      .u64(maxOpenExposure)
       .out();
     const ix = new TransactionInstruction({
       programId: PROGRAM_ID,
@@ -191,6 +222,7 @@ async function main() {
       .opt(flags.max, (b) => b.u64(Math.round(Number(flags.max) * LAMPORTS)))
       .opt(flags.grace, (b) => b.i64(Number(flags.grace)))
       .opt(flags.paused, (b) => b.bool(flags.paused === 'true'))
+      .opt(flags.exposure, (b) => b.u64(Math.round(Number(flags.exposure) * LAMPORTS)))
       .out();
     const ix = new TransactionInstruction({
       programId: PROGRAM_ID,
@@ -208,7 +240,9 @@ async function main() {
     return;
   }
 
-  die('Usage: config.mjs <show|init|set|handover> [--owner PUBKEY] [--cluster devnet] [--keypair PATH]');
+  die('Usage: config.mjs <show|init|set|handover> [--owner PUBKEY] [--resolver PUBKEY]\n'
+    + '         [--fee-wallet PUBKEY] [--min SOL] [--max SOL] [--exposure SOL] [--paused true|false]\n'
+    + '         [--cluster devnet|mainnet-beta] [--keypair PATH]');
 }
 
 main().catch((e) => die(e.stack || String(e)));

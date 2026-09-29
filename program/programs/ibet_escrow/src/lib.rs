@@ -15,7 +15,7 @@ pub use constants::*;
 pub use instructions::*;
 pub use state::*;
 
-declare_id!("51Qu3DKZZ9bHJKiNyXhKcTp7PqJNW1YqVcx7Cqm6Vyv");
+declare_id!("FTB9qgtwzRjSU3Hq5KwZmQkRWWxg8TqxwS2hxPetLt7W");
 
 #[program]
 pub mod ibet_escrow {
