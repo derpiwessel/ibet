@@ -467,6 +467,12 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   /// Real money is at stake on this build.
   var LIVE_MONEY = !!CHAIN.live;
 
+  /// What to call the money on screen. Hardcoding "devnet SOL" is how the site
+  /// ended up telling people their real SOL was worthless, so every piece of
+  /// copy that names it goes through here.
+  function solWord(){ return LIVE_MONEY ? 'SOL' : 'devnet SOL'; }
+  function netWord(){ return LIVE_MONEY ? 'Solana mainnet' : 'Devnet — test SOL'; }
+
   var LAMPORTS = 1e9;
   var w3 = window.solanaWeb3 || null;
   var PROGRAM_ID = null, conn = null, dataConn = null;
@@ -669,7 +675,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       var code = m[0].indexOf('0x')>-1 ? parseInt(m[1],16) : parseInt(m[1],10);
       return CHAIN_ERR[code] || ('The program rejected that (error '+code+').');
     }
-    if(/insufficient lamports|insufficient funds|Attempt to debit/i.test(hay)) return 'Not enough devnet SOL in your wallet for that.';
+    if(/insufficient lamports|insufficient funds|Attempt to debit/i.test(hay)) return 'Not enough '+solWord()+' in your wallet for that.';
     if(/blockhash not found|block height exceeded/i.test(hay)) return 'That took too long to confirm. Try again.';
     if(/already in use/i.test(hay)) return 'That bet already exists. Try again.';
     return 'That didn’t go through on chain. Try again.';
@@ -1502,7 +1508,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   }
 
   // ── balance and record ──
-  // The spendable balance is simply the wallet's own devnet SOL.
+  // The spendable balance is simply the wallet's own SOL.
   function available(){ return S.bal; }
   function loadBalance(){
     if(!conn || !S.me) { S.bal=0; return Promise.resolve(0); }
@@ -1650,7 +1656,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
 
   function renderTop(){
     renderNetbar();
-    var bal = S.me ? '<b>'+fmtSol(available())+'</b> devnet SOL' : '';
+    var bal = S.me ? '<b>'+fmtSol(available())+'</b>' + (LIVE_MONEY ? '' : ' devnet SOL') : '';
     $('balpill').innerHTML=bal;
     $('balpill2').innerHTML = S.me ? 'Wallet <b>'+fmtSol(available())+'</b>' : '';
     $('walletLbl').textContent = S.me ? (S.wallet ? shortCa(S.wallet) : 'Connected') : 'Connect Wallet';
@@ -1791,7 +1797,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       var pk = (r && r.publicKey) || prov.publicKey;
       if(!pk) throw new Error('Wallet did not return an address');
       setWallet(pk.toString());
-      toast('Wallet connected — devnet.');
+      toast(LIVE_MONEY ? 'Wallet connected.' : 'Wallet connected — devnet.');
       supabaseSignIn(prov);
       return loadBets();
     }).catch(function(e){
@@ -1828,7 +1834,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   function accountMenu(){
     openModal('<h3 id="mTitle">Your wallet</h3><p style="word-break:break-all">'+esc(S.wallet||'')+'</p>'+
       '<div class="summary"><div><span>Balance</span><span>'+fmtSol(available())+'</span></div>'+
-      '<div><span>Network</span><span>Devnet — test SOL</span></div>'+
+      '<div><span>Network</span><span>'+netWord()+'</span></div>'+
       (S.canResolve?'<div><span>Role</span><span>Resolver</span></div>':'')+'</div>'+
       '<p style="margin:0 0 18px;font-size:13px"><a class="exlink" href="'+esc(explorer('address',S.wallet||''))+'" target="_blank" rel="noopener noreferrer">View wallet on Solana Explorer '+IC.ext+'</a></p>'+
       '<div class="mact"><button class="wbtn ghost" id="signOut">Disconnect</button><button class="wbtn" data-close="1">Close</button></div>',
@@ -2028,9 +2034,9 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       var ok3 = step1ok() && step2ok() && inLimits && (!S.me || st3<=available()+1e-9);
       $('wCreate').classList.toggle('ready', ok3); $('wCreate').disabled=!ok3;
       $('wCreate').innerHTML = S.me ? 'Create Bet '+ARROW_R : 'Connect Wallet '+ARROW_R;
-      $('wHint3').textContent = !S.me ? 'Connect your wallet to stake this bet on devnet.'
+      $('wHint3').textContent = !S.me ? 'Connect your wallet to stake this bet.'
         : (!inLimits ? 'Stake has to be between '+fmtSol(minStake())+' and '+fmtSol(maxStake())+'.'
-        : (st3>available()+1e-9 ? 'Not enough devnet SOL — you have '+fmtSol(available())+'.'
+        : (st3>available()+1e-9 ? 'Not enough '+solWord()+' — you have '+fmtSol(available())+'.'
         : 'Approving sends your stake into the escrow account. The taker matches it, and the clock starts then.'));
     }
   }
@@ -2134,7 +2140,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     if(!CFG) return toast('Still reading the escrow config — one moment.');
     if(CFG.paused) return toast('New bets are paused right now.');
     if(st<minStake()-1e-9 || st>maxStake()+1e-9) return toast('Stake has to be between '+fmtSol(minStake())+' and '+fmtSol(maxStake())+'.');
-    if(st>available()+1e-9) return toast('Not enough devnet SOL — you have '+fmtSol(available())+'.');
+    if(st>available()+1e-9) return toast('Not enough '+solWord()+' — you have '+fmtSol(available())+'.');
     $('wCreate').disabled=true;
     var ca=W.ca.trim(), ticker=W.ticker;
     // bet_id is part of the PDA seeds; the millisecond clock keeps it unique
@@ -2165,7 +2171,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     if(!S.me) return connect();
     if(geoBlocked() || !hasAcceptedTerms()) return gateBetting(function(){ askTake(id); });
     if(b.creator===S.me) return toast('You can’t take your own bet.');
-    if(b.stake>available()+1e-9) return toast('Not enough devnet SOL — you have '+fmtSol(available())+'.');
+    if(b.stake>available()+1e-9) return toast('Not enough '+solWord()+' — you have '+fmtSol(available())+'.');
     var sp = split(b.stake);
     // The clock starts when this bet is taken, so that is the deadline.
     var deadline = Date.now() + b.durSecs*1000;
@@ -2178,7 +2184,8 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       '<div><span>Platform fee ('+(feeBps()/100)+'%)</span><span>'+fmtSol(sp.fee)+'</span></div>'+
       '<div class="hl"><span>Winner gets</span><span>'+fmtSol(sp.win)+'</span></div>'+
       '<div><span>Against</span><span>'+esc(nameOf(b.creator))+'</span></div></div>'+
-      '<p style="margin:0 0 18px;font-size:13px;color:var(--muted)">Your stake moves into the escrow account as soon as you approve. Devnet SOL, no real value.</p>'+
+      '<p style="margin:0 0 18px;font-size:13px;color:var(--muted)">Your stake moves into the escrow account as soon as you approve. '+
+      (LIVE_MONEY ? 'This is real SOL and the transaction cannot be reversed.' : 'Devnet SOL, no real value.')+'</p>'+
       '<div class="mact"><button class="wbtn ghost" data-close="1">Not now</button><button class="wbtn" id="confirmTake">Take Bet</button></div>',
       function(){
         mountModalCard(b.ca, b, 200);
