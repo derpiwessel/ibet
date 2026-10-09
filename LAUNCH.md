@@ -1,8 +1,27 @@
-# Mainnet launch runbook
+# Mainnet launch runbook — executed 9 October 2026
 
-Every step here moves real money or real authority. Nothing in this file has
-been executed. Work through it in order — each step's verification has to pass
-before the next one starts.
+**This launch is done.** Kept as the record of what was run and in what order;
+every step below has been executed and verified. The live addresses and the
+day-to-day commands are in the README — this file is history.
+
+| | |
+|---|---|
+| Program | `FTB9qgtwzRjSU3Hq5KwZmQkRWWxg8TqxwS2hxPetLt7W` |
+| Config | `5X5sz4Kz3BbWfTKAn4fdd2r7VdZH6WSYKu2VgmT1fHvv` |
+| Admin + upgrade authority | `Bk24511fFRiHnFtpdZnYHxnf48pqCHEqoWS6YR8o8Gzp` (Squads vault 0) |
+| Resolver | `FroYveCYYRbJZAhvT37iCAj1sBiyYg1nzBAjGxQFrFTE` |
+| Deployed bytes | `6f336c7f…` on chain, byte-identical to the tested build |
+| Smoke test | all three paths, every lamport asserted |
+
+One thing worth remembering from the day: the first real mainnet transaction
+failed. Phase 3 had made `Config` writable on every instruction and all three
+clients were still sending it read-only — invisible on devnet, which runs the
+older program. `program/scripts/check-clients.mjs` exists because of it. The
+smoke test caught it before the handover, which is the argument for running the
+test first and handing over authority second.
+
+Every step here moves real money or real authority. Work through it in order —
+each step's verification has to pass before the next one starts.
 
 Two roles appear below. **Owner** means steps only you can do, because they need
 your wallets to sign. **Dev** means steps the developer runs, each one asked for
