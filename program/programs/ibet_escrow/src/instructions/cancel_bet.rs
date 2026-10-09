@@ -4,7 +4,7 @@ use crate::{
     constants::*,
     error::EscrowError,
     events::BetCancelled,
-    state::{Bet, BetStatus},
+    state::{Bet, BetStatus, Config},
 };
 
 /// Pulling an untaken bet. Deliberately does not look at `config.paused`: a
@@ -13,6 +13,8 @@ use crate::{
 pub struct CancelBet<'info> {
     #[account(mut)]
     pub creator: Signer<'info>,
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump)]
+    pub config: Account<'info, Config>,
     #[account(
         mut,
         seeds = [BET_SEED, bet.creator.as_ref(), &bet.bet_id.to_le_bytes()],
@@ -28,6 +30,9 @@ pub fn handle_cancel_bet(ctx: Context<CancelBet>) -> Result<()> {
         ctx.accounts.bet.status == BetStatus::Open,
         EscrowError::BetNotOpen
     );
+
+    let stake = ctx.accounts.bet.stake;
+    ctx.accounts.config.release_exposure(stake);
 
     let bet = &mut ctx.accounts.bet;
     bet.status = BetStatus::Cancelled;

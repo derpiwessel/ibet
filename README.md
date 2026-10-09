@@ -10,33 +10,59 @@ reaches the target at any moment in the window — the high of a 1-minute candle
 bet it is the candle's low. The taker wins only if the target is never touched
 before the deadline, which can only be settled once that deadline passes.
 
-> **Devnet only.** The deployed program runs on Solana devnet with test SOL that
-> has no value. Do not deploy this to mainnet before working through the
-> [mainnet checklist](#mainnet-checklist).
+> **Live on mainnet with real SOL, deliberately capped: 0.01–0.1 SOL a side and
+> 10 SOL across the whole program at once.** The caps exist so that a bug, a bad
+> candle or a stolen key costs a bounded amount. Raising them needs two of three
+> multisig signers. What has *not* happened is an independent audit — see
+> [what is still open](#what-is-still-open).
 
 | | |
 |---|---|
 | Frontend | `index.html` — one file, no build step, deployed by Vercel |
 | Program | `program/` — Anchor workspace, crate `ibet_escrow` |
-| Program ID | `51Qu3DKZZ9bHJKiNyXhKcTp7PqJNW1YqVcx7Cqm6Vyv` (devnet) |
-| Config PDA | `LYnPs2rV65RsjffKTEuoziqWy7jYXVPqem9npFpeN6s` |
-| Keeper | `keeper` Edge Function, every minute via `pg_cron` |
+| Mainnet | `FTB9qgtwzRjSU3Hq5KwZmQkRWWxg8TqxwS2hxPetLt7W`, config `5X5sz4Kz3BbWfTKAn4fdd2r7VdZH6WSYKu2VgmT1fHvv` |
+| Devnet | `51Qu3DKZZ9bHJKiNyXhKcTp7PqJNW1YqVcx7Cqm6Vyv`, config `LYnPs2rV65RsjffKTEuoziqWy7jYXVPqem9npFpeN6s` |
+| Keeper | `keeper` (devnet) and `keeper-mainnet`, both every minute via `pg_cron` |
 | Backend | Supabase `ibet` (`bryjuhrovcgeurtlysmt`, eu-central-1) |
 
-## Current devnet deployment
+`main` ships `CLUSTER = 'mainnet'`; previews stay on devnet, so there is always
+somewhere to test that cannot cost anyone money.
 
-| | |
-|---|---|
-| Program | `51Qu3DKZZ9bHJKiNyXhKcTp7PqJNW1YqVcx7Cqm6Vyv` |
-| Resolver | `FYjinyZZyVks7eQfexDffM9TDFJyb6VEyAPzEFiLDEwj` (the keeper) |
-| Fee wallet | `EDiALz4fYTJcNaTcoAuuo6X5rWsvys199dnwgeWCyW5Q` (the owner) |
-| Admin, upgrade authority | `GXckV6zEZwjMWgXdxd6bbEdBKARSGKKpWfp9GB4YcUNZ` (the deployer, **temporary**) |
-| Fee | 200 bps · stakes 0.01–5 SOL · grace 48h · lengths 5 min–30 days |
+## The two deployments
 
-Admin rights and the upgrade authority still sit with the deployer so the
-program can be patched while it is being tested. Move both to the owner's
-wallet with the two commands under
-[Hand control to the owner's wallet](#hand-control-to-the-owners-wallet).
+| | mainnet | devnet |
+|---|---|---|
+| Program | `FTB9qgtwzRjSU3Hq5KwZmQkRWWxg8TqxwS2hxPetLt7W` | `51Qu3DKZZ9bHJKiNyXhKcTp7PqJNW1YqVcx7Cqm6Vyv` |
+| Config | `5X5sz4Kz3BbWfTKAn4fdd2r7VdZH6WSYKu2VgmT1fHvv` | `LYnPs2rV65RsjffKTEuoziqWy7jYXVPqem9npFpeN6s` |
+| Resolver | `FroYveCYYRbJZAhvT37iCAj1sBiyYg1nzBAjGxQFrFTE` | `FYjinyZZyVks7eQfexDffM9TDFJyb6VEyAPzEFiLDEwj` |
+| Fee wallet | `EDiALz4fYTJcNaTcoAuuo6X5rWsvys199dnwgeWCyW5Q` | same |
+| Admin | the Squads vault | the devnet deployer |
+| Upgrade authority | the Squads vault | the devnet deployer |
+| Stakes | **0.01 – 0.1 SOL** | 0.01 – 5 SOL |
+| Exposure cap | **10 SOL** | none (phase-2 program) |
+| Fee, grace, lengths | 200 bps · 48h · 5 min–30 days | same |
+
+### Who can change what
+
+Mainnet admin and upgrade authority are both the **Squads vault**
+`Bk24511fFRiHnFtpdZnYHxnf48pqCHEqoWS6YR8o8Gzp`, which is vault index 0 of
+multisig `6fNREmB2kiGnnr6YGRhtYCmDQkMPFRDURxbB4EN9D7Yg` — 2-of-3 over the
+owner's Phantom, a backup wallet and one more trusted signer. Verify that
+derivation yourself before sending anything there; sending authority to the
+multisig address instead of its vault is the classic way to lose a program.
+
+Nobody else can upgrade the program, raise the caps, change the fee or pause it.
+The deploy wallet holds nothing and has no authority. The keeper can only settle,
+and only to the destinations the bet already stores.
+
+Raising a limit, pausing, or pointing the resolver at a new keeper address all go
+through the multisig: build the `update_config` instruction, propose it in Squads,
+and have a second signer approve. Every field is optional, so one proposal
+changes only what it names.
+
+The program refuses some changes outright whoever proposes them: a fee above 5%,
+a `max_stake` below `min_stake`, a zero grace window, and an exposure cap that
+cannot hold two whole stakes.
 
 ### Phase 2 runs on a new program address
 
@@ -87,11 +113,11 @@ The keeper reads total supply from mainnet with `getTokenSupply` and multiplies
 by the candle price. The browser cannot do that: every free mainnet RPC refuses
 browser traffic (`403`), so it uses DexScreener's fully-diluted valuation, which
 is the same quantity — price × total supply — computed by them. The two agree to
-rounding. Point `CHAIN.dataRpcUrl` at an RPC that accepts browser traffic and
-the page reads the supply itself instead.
+rounding. Point `dataRpcUrl` at an RPC that accepts browser traffic and the page
+reads the supply itself instead.
 
-Note the coins are **mainnet** tokens even though the escrow is on devnet, so
-market data always comes from mainnet.
+On devnet the coins are still **mainnet** tokens even though the escrow is not,
+so market data always comes from mainnet. On mainnet the two are the same chain.
 
 ## The program
 
@@ -160,11 +186,25 @@ load simply uncovers it again.
 ## The keeper
 
 `keeper/index.ts` is a Supabase Edge Function that `pg_cron` fires every minute.
+
+**One file, deployed twice.** The slug it answers on decides everything that
+differs: `keeper` is devnet, `keeper-mainnet` is mainnet, and each picks its own
+program, escrow RPC and vault key from that. Two copies of a 700-line settlement
+loop would have drifted apart, and this is the code that moves other people's
+money. Both deployments report the same `ezbr_sha256`, which is how you check
+they really are the same bytes:
+
+```sql
+select slug, version, ezbr_sha256 from edge_functions;  -- or the dashboard
+```
+
 Each run:
 
 1. reads every matched bet off the chain and mirrors them into `chain_bets`;
-2. finds the coin's deepest pool on DexScreener and walks GeckoTerminal's
-   1-minute candles from where it last looked;
+2. picks the coin's pool on DexScreener — the deepest one that has actually
+   traded recently, not simply the deepest, because a deep pool that has gone
+   quiet produces no candles and a bet with no candles cannot be settled either
+   way — and walks GeckoTerminal's 1-minute candles from where it last looked;
 3. converts each candle's high (Higher) or low (Lower) to a market cap;
 4. on the first candle inside `[taken_at, expires_at]` that reaches the target,
    sends `settle_bet(CreatorWins, that market cap, that candle's time)`;
@@ -173,8 +213,15 @@ Each run:
    which is a large slice of a five-minute bet, so it waits rather than calling
    it early and records `waiting for candles to cover the whole window` while
    it does;
-6. writes the deciding candle, its pool, its source and the transaction
-   signature into `settlements`.
+6. before paying anyone, checks the deciding candle against a second provider
+   and refuses to settle if they disagree by more than 5% (see
+   [the sanity check](#the-sanity-check));
+7. writes the deciding candle, its pool, both providers' values, the deviation
+   and the transaction signature into `settlements`.
+
+Devnet and mainnet share one database, so `chain_bets`, `settlements` and
+`alerts` each carry a `cluster` column and the site filters on it. Without that a
+mainnet visitor would be shown devnet bets as though they were real.
 
 A seven-day window is more minute candles than one API page holds, so each run
 only fetches what is new and records how far it got in `chain_bets.checked_through`.
@@ -197,13 +244,38 @@ That is why `verify_jwt` is off — the caller is cron, not a signed-in user.
 node program/scripts/config.mjs show
 ```
 
-To rotate the key: delete the `ibet_keeper_key` secret in the Supabase
-dashboard, call the function once with `?action=init-key` to mint a new one,
-fund the address it returns, and point the resolver at it with
-`config.mjs set --resolver <NEW>`.
+Each cluster has its own secret: `ibet_keeper_key` for devnet,
+`ibet_keeper_key_mainnet` for mainnet. `keeper_key_set` refuses to overwrite one
+that already exists, so rotation is deliberate rather than accidental.
 
-The keeper needs a little devnet SOL for transaction fees. Top it up when it
-runs dry, or settlements silently stop and bets fall through to the 48h refund.
+To rotate: delete the secret in the Supabase dashboard, call the function with
+`?action=init-key` to mint a new one, fund the address it returns, and point the
+resolver at it — on mainnet that last step is a multisig proposal. The old key
+can do nothing the moment the config stops naming it.
+
+```sql
+select public.keeper_tick('init-key', 'mainnet');
+```
+
+The keeper needs a little SOL for transaction fees — it was funded with 0.05 SOL,
+which is thousands of settlements. Top it up when it runs low, or settlements
+stop silently apart from the alert and bets fall through to the 48h refund.
+
+### The sanity check
+
+GeckoTerminal's 1-minute candles decide every outcome, because they are the same
+data the chart shows. Birdeye is asked about the same minute, ±1 minute for clock
+skew, only at the moment a settlement is about to happen — once per run would be
+43,200 calls a month and well past any free allowance.
+
+Within 5% the keeper settles. Beyond it, it pays nobody, alerts, and retries
+every minute; if the disagreement persists the 48h refund is the floor. If
+Birdeye has no data at all it settles on GeckoTerminal alone and says so. Both
+values and the deviation go into `settlements` either way, so every payout can be
+re-checked afterwards.
+
+Measured deviations on real settlements so far: 0.79%, 0.81%, 2.10%. The 5%
+threshold sits well above that noise and well below a broken feed.
 
 ### Force resolve
 
@@ -236,6 +308,7 @@ only needed for the config script.
 
 ```bash
 cd program && anchor build --arch v0 && cargo test
+node scripts/check-clients.mjs
 ```
 
 `--arch v0` is not optional: Anchor 1.2 defaults to SBPF v3, which the LiteSVM
@@ -248,100 +321,147 @@ and a validator's clock only advances at wall-clock speed. One dedicated payer
 covers every transaction fee, so the parties' balances move only through escrow
 and are asserted to the lamport.
 
-50 tests cover: a touch paying the creator out early, in both directions and on
+62 tests cover: a touch paying the creator out early, in both directions and on
 the exact target; evidence from outside the window being refused; a creator win
 whose market cap does not reach the target being refused; a taker win before the
 deadline being refused; a touch still settling after the deadline inside the
-grace window; the fee arithmetic at 2% and 0%; every phase-1 rejection; the
+grace window; the fee arithmetic at 2% and 0%; the stake cap at exactly the limit
+and one lamport over; the exposure cap at it, over it, and after a refund frees
+room; that the counter always equals the sum of what is really escrowed; the
 pause rules; and that no lamport is created or destroyed on any path.
 
-### Deploy to devnet
+`check-clients.mjs` is a different kind of check, and it exists because of a real
+bug. Three clients hardcode the account list of every instruction — the site, the
+keeper and the smoke test — and the compiler checks none of them. Phase 3 made
+`Config` writable everywhere, and all three were left sending it read-only, which
+broke every single instruction on mainnet while devnet carried on working because
+it still ran the older program. The script compares each client against the IDL
+Anchor generates from the Accounts structs. **Run it after any change to those
+structs.**
+
+### Deploy
+
+The IDL names the mainnet program, so both scripts talk to mainnet by default and
+devnet's older deployment is reached with `--program`:
 
 ```bash
-solana config set --url devnet --keypair ~/.config/solana/ibet-devnet-deployer.json
-solana airdrop 2                       # twice; deploy needs ~2.5 SOL of headroom
-cd program && anchor build --arch v0
+node scripts/config.mjs show --cluster devnet \
+  --program 51Qu3DKZZ9bHJKiNyXhKcTp7PqJNW1YqVcx7Cqm6Vyv
+```
+
+A fresh deployment, on either cluster:
+
+```bash
+cd program && anchor build --arch v0 && cargo test
 solana program deploy target/deploy/ibet_escrow.so \
-  --program-id target/deploy/ibet_escrow-keypair.json
+  --program-id target/deploy/ibet_escrow-keypair.json \
+  --keypair <DEPLOY_WALLET> --url <CLUSTER>
 ```
 
-Then create the config — resolver and fee wallet go to the owner's wallet
-immediately, the signer stays admin:
+Then confirm the chain got the bytes that were tested, before trusting it with
+anything:
 
 ```bash
-cd program && npm install
-node scripts/config.mjs init --owner <OWNER_WALLET>
-node scripts/config.mjs show
+solana program dump <PROGRAM_ID> /tmp/onchain.so --url <CLUSTER>
+head -c $(stat -f%z target/deploy/ibet_escrow.so) /tmp/onchain.so \
+  | cmp - target/deploy/ibet_escrow.so && echo same bytes
 ```
 
-Defaults are fee 200 bps (2%), stakes 0.01–5 SOL, grace 48h. Override with
-`--fee-bps`, `--min`, `--max`, `--grace`.
-
-Check a deployment for real, against whichever cluster is configured:
+Create the config. On mainnet the resolver is named here rather than changed
+later, because the keeper's key exists before the program does:
 
 ```bash
-node scripts/smoke.mjs
+node scripts/config.mjs init --cluster mainnet-beta --keypair <DEPLOY_WALLET> \
+  --owner <OWNER_WALLET> --resolver <KEEPER> --min 0.01 --max 0.1 --exposure 10
+node scripts/config.mjs show --cluster mainnet-beta
 ```
 
-That creates a bet, takes it from a throwaway wallet and cancels a second one,
-asserting every balance to the lamport. It needs about `stake * 2 + 0.05` SOL in
-the funding wallet. Settling is not covered — only the resolver can sign that,
-and a bet cannot expire faster than its shortest timeframe of one day.
+Defaults are fee 200 bps, stakes 0.01–5 SOL, grace 48h, exposure 10 SOL.
+Override with `--fee-bps`, `--min`, `--max`, `--grace`, `--exposure`.
 
-Other config changes:
+Then check it against the live program:
 
 ```bash
-node scripts/config.mjs set --paused true          # stop new bets
-node scripts/config.mjs set --fee-bps 100
-node scripts/config.mjs handover --owner <WALLET>  # hands admin over, one way
+node scripts/smoke.mjs --cluster mainnet-beta --keypair <WALLET> --stake 0.01
 ```
 
-### Hand control to the owner's wallet
+All three paths, in order: create → cancel, create → take → touch, and
+create → take → five-minute expiry. Every balance is asserted to the lamport,
+including the fee wallet's share, and no bet is left open at the end — which
+matters on mainnet, where a dangling matched bet would sit in escrow until the
+48-hour refund. It needs about `stake * 3 + 0.05` SOL, nearly all of which comes
+back. `--only 2` runs one path, which is how to resume after a dropped
+connection.
 
-Both steps are one-way from the deployer's point of view:
+Config changes on devnet, where the deployer is still admin:
 
 ```bash
-node scripts/config.mjs handover --owner <OWNER_WALLET>
-solana program set-upgrade-authority 51Qu3DKZZ9bHJKiNyXhKcTp7PqJNW1YqVcx7Cqm6Vyv \
-  --new-upgrade-authority <OWNER_WALLET> --skip-new-upgrade-authority-signer-check
+node scripts/config.mjs set --cluster devnet --program <DEVNET_ID> --paused true
+node scripts/config.mjs set --cluster devnet --program <DEVNET_ID> --fee-bps 100
 ```
 
-After that, patching the program or changing the config requires the owner's key
-in the CLI, so do it once the deployment has been tested.
+On mainnet the same instruction goes through the multisig.
+
+### Hand control over
+
+Both steps are one-way, and on mainnet they have already happened — admin and
+upgrade authority are the Squads vault. For reference, or for a future
+deployment:
+
+```bash
+node scripts/config.mjs set --cluster mainnet-beta --admin <VAULT>
+solana program set-upgrade-authority <PROGRAM_ID> \
+  --new-upgrade-authority <VAULT> \
+  --skip-new-upgrade-authority-signer-check --url mainnet-beta
+```
+
+Do it after the deployment has been smoke-tested, not before: a program fix is
+cheap while the deploy wallet still holds authority and a multisig procedure
+afterwards. Check the result with `solana program show <PROGRAM_ID>` and
+`config.mjs show`, and confirm the deploy wallet is down to dust.
 
 ### Keypairs
 
 Nothing secret is in the repo, and `.gitignore` keeps it that way.
 
-- `program/target/deploy/ibet_escrow-keypair.json` — **the program's identity**.
-  Losing it means the program can never be upgraded at this address again. Back
-  it up outside the repo.
-- `~/.config/solana/ibet-devnet-deployer.json` — the deployer wallet, currently
-  admin and upgrade authority.
+| file | what it is |
+|---|---|
+| `~/.config/solana/ibet-escrow-mainnet-program-keypair.json` | **the mainnet program's identity.** Back this up offline. Losing it means the program can never be redeployed at `FTB9qgtwz…` again. It lives outside `target/`, which `cargo clean` would wipe. |
+| `~/.config/solana/ibet-mainnet-deploy.json` | the mainnet deploy wallet. Holds nothing and has no authority since the handover; keep it anyway. |
+| `~/.config/solana/ibet-escrow-v2-program-keypair.json` | the devnet program's identity |
+| `~/.config/solana/ibet-devnet-deployer.json` | devnet admin and upgrade authority |
+| Vault `ibet_keeper_key_mainnet` | the mainnet resolver. **No backup by design** — rotate instead. Nobody has ever seen the secret half, including whoever deployed it. |
+
+`program/target/deploy/ibet_escrow-keypair.json` is a working copy of the mainnet
+program keypair, so `anchor build` and `solana program deploy` find it where they
+expect. The copy under `~/.config/solana` is the one that matters.
 
 ### Pointing the frontend somewhere else
 
-One block at the top of the script in `index.html`:
+One line at the top of the script in `index.html` picks a cluster, and one table
+holds both:
 
 ```js
-var CHAIN = {
-  cluster:    'devnet',
-  rpcUrl:     'https://api.devnet.solana.com',
-  programId:  '51Qu3DKZZ9bHJKiNyXhKcTp7PqJNW1YqVcx7Cqm6Vyv',
-  dataRpcUrl: 'https://api.mainnet-beta.solana.com'
-};
+var CLUSTER = 'mainnet';          // 'devnet' on previews
+var CHAINS = { devnet: { … }, mainnet: { … } };
 ```
 
-Nothing below that block knows which cluster it is on. Moving to mainnet means
-changing these values and deploying the same program there — everything else,
-including the Anchor discriminators and account sizes further down, stays as it
-is. The Rust test `the_account_sizes_the_frontend_hardcodes_still_hold` fails if
-the account layout ever moves out from under those constants.
+Nothing below that block knows which cluster it is on. `rpcUrl` is where the
+escrow lives; `dataRpcUrl` is where the coins live — on devnet they differ, on
+mainnet they are the same endpoint. `CLUSTER` is also what the Supabase history
+queries filter on, so the two chains never show each other's bets.
 
-`rpcUrl` is where the escrow lives; `dataRpcUrl` is where the coins live. On
-devnet they differ, and on mainnet they become the same endpoint. The keeper has
-the same pair at the top of `keeper/index.ts` and has to be redeployed with
-them.
+The mainnet `rpcUrl` is Helius with the key restricted to the `i-bet.fun`
+origins. That restriction is the whole protection: the key sits in client-side
+source, and what stops anyone else using it is that Helius refuses it from any
+other origin. It therefore does **not** work from localhost or a preview URL,
+which is deliberate — previews stay on devnet, which is where testing belongs.
+It also refuses the CLI, which sends no origin at all, so command-line work
+against mainnet goes through the public RPC.
+
+The Rust test `the_account_sizes_the_frontend_hardcodes_still_hold` fails if the
+account layout moves out from under the constants further down, and
+`check-clients.mjs` fails if the account lists do.
 
 To run the site locally:
 
@@ -356,16 +476,35 @@ vault helpers, `keeper_tick`, and the `ibet-keeper` cron job). The function
 itself is `keeper/index.ts`, deployed with `verify_jwt` off:
 
 ```bash
-supabase functions deploy keeper --no-verify-jwt
+supabase functions deploy keeper         --no-verify-jwt
+supabase functions deploy keeper-mainnet --no-verify-jwt
 ```
 
-Run it by hand, or check what the last run did:
+Deploy both from the same file, always, and check afterwards that the two report
+the same `ezbr_sha256`. A difference there means one chain is running code the
+other is not.
+
+Run one by hand, or check what the last run did:
 
 ```sql
-select public.keeper_tick();                        -- fire one run
+select public.keeper_tick(null, 'mainnet');         -- fire one run
 select status_code, content::text, created
   from net._http_response order by id desc limit 1; -- read the result
-select * from cron.job where jobname = 'ibet-keeper';
+select jobid, jobname, schedule, command, active from cron.job;
+```
+
+### Alerts
+
+Every settlement, every blocked settlement, a second source that is down or out
+of budget, and an escrow above 80% of its cap all post to a Discord webhook kept
+in the vault as `alert_webhook_url`. Each line is prefixed with the cluster, so
+devnet noise is obvious. Everything is also written to `alerts` with a
+`delivered` flag, so a webhook that was broken or not yet configured loses
+nothing.
+
+```sql
+select created_at, cluster, level, kind, message, delivered
+  from alerts order by created_at desc limit 20;
 ```
 
 ## What is still worth knowing
@@ -378,20 +517,48 @@ select * from cron.job where jobname = 'ibet-keeper';
   creator, taker and fee wallet — but it can settle wrongly, and a `TakerWins`
   is "never touched", which nothing on chain can verify. The `settlements`
   table is what makes that auditable after the fact.
-- **One price source.** GeckoTerminal's candles and DexScreener's pool choice
-  are both single points of failure. A second source to cross-check would be
-  the next thing to add.
+- **One deciding price source.** GeckoTerminal's candles decide every outcome;
+  Birdeye only vetoes data that looks broken. Both agreeing on a wrong number
+  still settles wrongly, and DexScreener's pool list is a third dependency on
+  top. What bounds the damage is the stake and exposure caps, not the data.
+- **A quiet pool cannot be settled.** Resolution needs candles, and a pool with
+  no trades produces none. The keeper now prefers pools that have actually
+  traded, but a coin that stops trading entirely leaves its bet to the 48-hour
+  refund. That is the honest outcome, and it is not a failure mode anyone loses
+  money to.
 
-## Mainnet checklist
+## What is still open
 
-Not done, and all of it comes before any mainnet deploy:
+Done for the mainnet launch:
 
-- [ ] Independent security audit of the program **and** the keeper.
-- [ ] Upgrade authority moved to a multisig (Squads).
-- [ ] A second, independent price source, and a rule for what to do when they
-      disagree. Consider whether a one-minute touch is still the right rule
-      when real money is at stake, or whether a sustained window is fairer.
-- [ ] A minimum liquidity and age filter on which coins can be bet on.
-- [ ] Legal review. The owner is in the Netherlands, where offering real-money
-      betting needs a Kansspelautoriteit licence — plus terms, an age gate and
-      whatever geo-restrictions follow from that review.
+- [x] Stake cap 0.01–0.1 SOL, exposure cap 10 SOL, both enforced on chain with
+      checked math and invariant tests.
+- [x] Upgrade authority and config admin on a 2-of-3 Squads multisig; the
+      deploy wallet holds nothing.
+- [x] A second price source with a 5% tolerance that blocks rather than decides,
+      and both values recorded on every settlement.
+- [x] 18+ and terms confirmation per wallet, and a geo-block that still lets
+      anyone reach their own bets to cancel or claim a refund.
+- [x] Alerts to Discord, and a smoke test that asserts every lamport on all
+      three paths against the live program.
+
+Still open, and the caps are what stand in for them:
+
+- [ ] **Independent security audit of the program and the keeper.** This has not
+      happened. The 10 SOL ceiling is a bound on what an undiscovered bug can
+      cost, not a substitute for the audit.
+- [ ] **Real terms of service.** `terms.html` is developer-written placeholder
+      text describing how the product works. A lawyer has not seen it, and the
+      footer still says to put a contact address there.
+- [ ] **Legal review.** The owner is in the Netherlands, where offering
+      real-money betting needs a Kansspelautoriteit licence. NL is geo-blocked
+      as a first step; the block is a compliance gesture, not a control — a VPN
+      defeats it and the program has no idea where anyone is.
+- [ ] **A minimum liquidity and age filter on coins.** Any token can be bet on
+      and nothing screens them. On a thin coin a single trade can push the
+      market cap through a target for one minute and fall straight back, and
+      that wins the bet.
+- [ ] **Whether a one-minute touch is the right rule for real money.** It
+      rewards exactly the volatility that is easiest to manufacture. A sustained
+      window would be fairer and is a different product; this is the owner's
+      call, and the site says plainly which rule it uses.

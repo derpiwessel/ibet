@@ -50,6 +50,10 @@ pub enum EscrowError {
     ObservedDoesNotReachTarget,
     #[msg("The taker can only win once the deadline has passed")]
     TakerCannotWinYet,
+    #[msg("This bet would push the program past its total exposure cap")]
+    ExposureCapReached,
+    #[msg("The exposure cap must leave room for at least one full bet")]
+    InvalidExposureCap,
     #[msg("Arithmetic overflow")]
     MathOverflow,
     #[msg("Escrow does not hold enough lamports")]

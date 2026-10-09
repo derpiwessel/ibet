@@ -15,7 +15,7 @@ use crate::{
 pub struct RefundExpired<'info> {
     /// Anyone — they only pay the transaction fee.
     pub caller: Signer<'info>,
-    #[account(seeds = [CONFIG_SEED], bump = config.bump)]
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump)]
     pub config: Account<'info, Config>,
     #[account(
         mut,
@@ -59,6 +59,10 @@ pub fn handle_refund_expired(ctx: Context<RefundExpired>) -> Result<()> {
     // The taker is paid out directly; the creator's stake rides along with the
     // rent when `close = creator` empties the account.
     move_lamports(&bet_info, &ctx.accounts.taker.to_account_info(), stake)?;
+
+    // Both stakes go back, so the full pot leaves escrow.
+    let pot = stake.checked_mul(2).ok_or(EscrowError::MathOverflow)?;
+    ctx.accounts.config.release_exposure(pot);
 
     let bet = &mut ctx.accounts.bet;
     bet.status = BetStatus::Refunded;

@@ -13,6 +13,7 @@ pub struct UpdateConfigArgs {
     pub max_stake: Option<u64>,
     pub grace_secs: Option<i64>,
     pub paused: Option<bool>,
+    pub max_open_exposure: Option<u64>,
 }
 
 #[derive(Accounts)]
@@ -54,6 +55,9 @@ pub fn handle_update_config(ctx: Context<UpdateConfig>, args: UpdateConfigArgs) 
     if let Some(v) = args.paused {
         config.paused = v;
     }
+    if let Some(v) = args.max_open_exposure {
+        config.max_open_exposure = v;
+    }
 
     // Re-check the invariants against the merged result, not just the new values.
     require!(config.fee_bps <= MAX_FEE_BPS, EscrowError::FeeTooHigh);
@@ -63,6 +67,10 @@ pub fn handle_update_config(ctx: Context<UpdateConfig>, args: UpdateConfigArgs) 
         EscrowError::InvalidStakeLimits
     );
     require!(config.grace_secs > 0, EscrowError::InvalidGrace);
+    require!(
+        config.max_open_exposure >= config.max_stake.saturating_mul(2),
+        EscrowError::InvalidExposureCap
+    );
 
     emit!(ConfigUpdated {
         admin: config.admin,

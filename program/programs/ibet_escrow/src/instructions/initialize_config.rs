@@ -12,6 +12,7 @@ pub struct InitConfigArgs {
     pub min_stake: u64,
     pub max_stake: u64,
     pub grace_secs: i64,
+    pub max_open_exposure: u64,
 }
 
 #[derive(Accounts)]
@@ -41,6 +42,12 @@ pub fn handle_initialize_config(
         EscrowError::InvalidStakeLimits
     );
     require!(args.grace_secs > 0, EscrowError::InvalidGrace);
+    // The ceiling has to fit at least one whole bet, or nothing could ever be
+    // created and the program would be dead on arrival.
+    require!(
+        args.max_open_exposure >= args.max_stake.saturating_mul(2),
+        EscrowError::InvalidExposureCap
+    );
 
     let config = &mut ctx.accounts.config;
     config.admin = ctx.accounts.admin.key();
@@ -52,6 +59,8 @@ pub fn handle_initialize_config(
     config.grace_secs = args.grace_secs;
     config.paused = false;
     config.bump = ctx.bumps.config;
+    config.open_exposure = 0;
+    config.max_open_exposure = args.max_open_exposure;
 
     emit!(ConfigUpdated {
         admin: config.admin,

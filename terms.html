@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Terms — ibet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0C0C0D;--row:#141416;--row-line:#232326;--text:#FFFFFF;--text2:#E4E4E7;
+  --muted:#9C9CA3;--faint:#6E6E75;--flame:#F0493E;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#F7F7F6;--row:#FFFFFF;--row-line:#E6E6E8;--text:#0C0C0D;--text2:#27272A;
+    --muted:#5C5C63;--faint:#75757C;--flame:#E0392F;color-scheme:light;
+  }
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter','Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:760px;margin:0 auto;padding:0 clamp(16px,4vw,32px)}
+header{padding:22px 0;border-bottom:1px solid var(--row-line)}
+.logo{font-family:'Inter Tight',sans-serif;font-weight:800;font-size:28px;letter-spacing:-.05em;color:var(--text);text-decoration:none}
+h1{font-family:'Inter Tight',sans-serif;font-weight:800;font-size:clamp(32px,5vw,46px);letter-spacing:-.04em;margin:40px 0 8px}
+.sub{color:var(--muted);margin:0 0 30px;font-size:15px}
+.draft{border:1px solid var(--flame);border-radius:14px;padding:18px 20px;margin:0 0 34px;background:color-mix(in srgb,var(--flame) 10%,transparent)}
+.draft b{color:var(--text)}
+.draft p{margin:0;color:var(--text2);font-size:14.5px;line-height:1.7}
+h2{font-family:'Inter Tight',sans-serif;font-weight:700;font-size:21px;letter-spacing:-.02em;margin:34px 0 10px}
+p,li{color:var(--text2);font-size:15px;line-height:1.75}
+ul{padding-left:20px}
+footer{margin:60px 0 40px;padding-top:22px;border-top:1px solid var(--row-line);color:var(--muted);font-size:14px}
+a{color:var(--text2)}
+</style>
+</head>
+<body>
+<header><div class="wrap"><a class="logo" href="/">ibet</a></div></header>
+
+<main class="wrap">
+  <h1>Terms</h1>
+  <p class="sub">Last updated: 28 September 2026</p>
+
+  <div class="draft">
+    <p><b>Placeholder.</b> This text is a description of how the product works, written
+    by the developer so the 18+ confirmation has something to link to. It has not been
+    written or reviewed by a lawyer and it is not the final terms of service. The owner
+    supplies the real text before launch.</p>
+  </div>
+
+  <h2>What ibet is</h2>
+  <p>ibet lets two people stake SOL against each other on whether a Solana token's
+  market cap will touch a target before a deadline. A Solana program holds both
+  stakes in escrow and pays out automatically. ibet is not a counterparty to any
+  bet and never holds funds outside that program.</p>
+
+  <h2>How a bet is decided</h2>
+  <ul>
+    <li>Market cap means the token's price multiplied by its total supply.</li>
+    <li>A bet is won the moment the market cap <b>touches</b> the target — the high
+    of a one-minute candle for a Higher bet, the low for a Lower one. It does not
+    have to end there.</li>
+    <li>The creator is paid immediately on a touch, which can be long before the
+    deadline. The taker wins only if the target is never touched in the whole window.</li>
+    <li>Settlement is automatic and final. <b>There is no dispute, appeal or review,
+    and neither player has any say in the outcome.</b></li>
+    <li>Prices come from a public market data provider. A second provider is used
+    only to detect broken data, never to change an outcome.</li>
+  </ul>
+
+  <h2>Fees and limits</h2>
+  <ul>
+    <li>A platform fee is taken from the pot when a bet settles. The current rate is
+    shown before you confirm any bet.</li>
+    <li>No fee is taken on a cancelled or refunded bet.</li>
+    <li>Stakes are capped per bet, and the program holds a limited total at any time.
+    Both limits are published on chain and shown on the site.</li>
+  </ul>
+
+  <h2>If something goes wrong</h2>
+  <p>If a bet is not settled within 48 hours of its deadline, anyone can trigger a
+  refund and both sides get their own stake back with no fee deducted. An unmatched
+  bet can be cancelled by its creator at any time. Neither of these can be blocked,
+  including while the site is paused.</p>
+
+  <h2>Your responsibility</h2>
+  <ul>
+    <li>You must be 18 or older.</li>
+    <li>You are responsible for whether using ibet is lawful where you are. ibet is
+    not available in some countries.</li>
+    <li>Any token can be bet on. Nobody screens them. Small tokens move violently and
+    a single large trade can push a price through a target for one minute and fall
+    straight back — that still counts.</li>
+    <li>Only stake what you can afford to lose.</li>
+    <li>You are responsible for your own wallet and keys. A transaction you approve
+    cannot be reversed by anyone.</li>
+  </ul>
+
+  <h2>No warranty</h2>
+  <p>ibet is provided as is, without warranty. Software, market data and blockchains
+  can all fail. The per-bet and total limits exist to bound what any single failure
+  can cost, and you should treat them as the maximum you might lose to one.</p>
+
+  <footer>
+    Questions: replace this line with a contact address before launch.
+  </footer>
+</main>
+</body>
+</html>
