@@ -537,8 +537,7 @@ Done for the mainnet launch:
       deploy wallet holds nothing.
 - [x] A second price source with a 5% tolerance that blocks rather than decides,
       and both values recorded on every settlement.
-- [x] 18+ and terms confirmation per wallet, and a geo-block that still lets
-      anyone reach their own bets to cancel or claim a refund.
+- [x] 18+ and terms confirmation per wallet.
 - [x] Alerts to Discord, and a smoke test that asserts every lamport on all
       three paths against the live program.
 
@@ -550,10 +549,14 @@ Still open, and the caps are what stand in for them:
 - [ ] **Real terms of service.** `terms.html` is developer-written placeholder
       text describing how the product works. A lawyer has not seen it, and the
       footer still says to put a contact address there.
-- [ ] **Legal review.** The owner is in the Netherlands, where offering
-      real-money betting needs a Kansspelautoriteit licence. NL is geo-blocked
-      as a first step; the block is a compliance gesture, not a control — a VPN
-      defeats it and the program has no idea where anyone is.
+- [ ] **Legal review, and it is now the sharpest of these.** The owner is in
+      the Netherlands, where offering real-money betting needs a
+      Kansspelautoriteit licence. ibet is open to every country, including NL —
+      the owner's decision, taken knowing that. The block was never a control
+      anyway (a VPN defeats it, and the program has no idea where anyone is),
+      but it is now not even a gesture. Turning it back on is one Vercel
+      environment variable: set `BLOCKED_COUNTRIES` to `NL`, or any
+      comma-separated list, and it applies on the next request with no deploy.
 - [ ] **A minimum liquidity and age filter on coins.** Any token can be bet on
       and nothing screens them. On a thin coin a single trade can push the
       market cap through a target for one minute and fall straight back, and

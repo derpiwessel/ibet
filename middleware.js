@@ -7,20 +7,25 @@
 // stand between them and it. Only creating and taking are stopped, which the
 // page does when it sees the flag below.
 //
-// Set BLOCKED_COUNTRIES in the Vercel project to change the list without a
-// deploy; it defaults to NL.
+// The list is empty by default: the owner's decision is that ibet is open to
+// everyone, including the Netherlands. The machinery stays because turning it
+// back on should not need a code change — set BLOCKED_COUNTRIES in the Vercel
+// project (e.g. "NL" or "NL,US") and it takes effect on the next request.
 //
-// Worth being honest about what this is: a compliance gesture, not a security
-// control. A VPN defeats it, and the program itself has no idea where anyone
-// is. It stops casual access from a restricted country; it does not make the
-// product unavailable there in any technical sense.
+// Worth being honest about what this is when it is switched on: a compliance
+// gesture, not a security control. A VPN defeats it, and the program itself has
+// no idea where anyone is. It stops casual access from a restricted country; it
+// does not make the product unavailable there in any technical sense.
+//
+// The country is still reported either way, because the terms acceptance record
+// stores where someone was when they accepted.
 
 export const config = {
   // Everything except static assets, so the cookie is set on the page itself.
   matcher: ['/((?!_next|logos/|favicon).*)'],
 };
 
-const DEFAULT_BLOCKED = 'NL';
+const DEFAULT_BLOCKED = '';
 
 function blockedList() {
   const raw = process.env.BLOCKED_COUNTRIES ?? DEFAULT_BLOCKED;

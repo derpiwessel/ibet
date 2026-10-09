@@ -193,6 +193,11 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .betgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .bx{border:1px solid var(--row-line);border-radius:14px;padding:18px 22px;display:flex;flex-direction:column;gap:12px}
 .bx>label,.bx>.lbl{font-size:14px;color:var(--muted)}
+.bxhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.bxhead>label{flex:0 1 auto}
+/* Read off the on-chain config, so raising the cap through the multisig shows
+   up here without a deploy. */
+.maxhint{font-size:13px;color:var(--muted);white-space:nowrap}
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .seg button{height:60px;border-radius:10px;border:1px solid var(--field-line);background:transparent;color:var(--muted);font-size:17px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:10px}
 .seg button[aria-pressed="true"].up{border-color:var(--green);color:var(--green);background:rgba(74,222,128,.08)}
@@ -318,8 +323,6 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .coinbtn{background:none;border:0;padding:0;display:contents;cursor:pointer}
 .evid{display:block;font-size:11.5px;color:var(--faint);margin-top:3px}
 .netbar{background:var(--flame);color:#fff;text-align:center;font-size:12.5px;font-weight:600;padding:7px 16px;letter-spacing:.01em}
-.netbar.beta{background:var(--row);color:var(--text2);border-bottom:1px solid var(--row-line);font-weight:500}
-.netbar.beta b{color:var(--text)}
 .geobar{background:var(--row);border:1px solid var(--row-line);border-radius:12px;padding:14px 16px;margin:0 0 18px;font-size:14px;color:var(--text2)}
 .geobar b{color:var(--text)}
 .terms{font-size:14px;color:var(--text2);line-height:1.7}
@@ -407,7 +410,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
 </main>
 
 <footer class="wrap">
-  <span>ibet beta · Solana devnet · stakes are test SOL with no real value</span>
+  <span id="footNet">ibet beta</span>
   <span>Any Solana token by CA · check the chart before you bet.</span>
 </footer>
 
@@ -424,10 +427,14 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   // Going to mainnet is a change to these three values plus a mainnet deploy of
   // the same program; nothing below this block knows which cluster it is on.
   // ── which chain this build talks to ──────────────────────────────────────
-  // `main` ships CLUSTER = 'mainnet'; previews stay on devnet, so the devnet
-  // program keeps working as a testing ground. Everything below reads from the
-  // selected entry and knows nothing else about the cluster.
-  var CLUSTER = 'mainnet';
+  // Mainnet on the real domain and nowhere else. Previews and localhost get
+  // devnet, so there is always somewhere to test that cannot cost anyone money,
+  // and nobody has to remember to flip a constant before merging.
+  //
+  // This is also forced on us: the Helius key is restricted to these two
+  // origins, so a preview pointed at mainnet could not read the chain at all.
+  // Serving ibet from a different domain means adding it here *and* to the key.
+  var CLUSTER = /^(www\.)?i-bet\.fun$/.test(location.hostname) ? 'mainnet' : 'devnet';
 
   var CHAINS = {
     devnet: {
@@ -749,6 +756,19 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   }
   var GEO = { country: cookie('ibet_country') || '', blocked: cookie('ibet_blocked')==='1' };
 
+  /// No country is blocked right now — ibet is open to everyone, which is the
+  /// owner's decision. This still reads the cookie, so switching the block back
+  /// on is a Vercel environment variable (`BLOCKED_COUNTRIES`) and nothing
+  /// else: no code change, no deploy.
+  ///
+  /// The exempt wallet is the owner's own, kept for if that ever happens. It
+  /// does nothing while the list is empty. Worth being plain that the gate was
+  /// never a security control either way — it reads a cookie the edge
+  /// middleware set, and a VPN defeats it. What stops somebody else betting as
+  /// this wallet is that they would have to sign with it.
+  var GEO_EXEMPT = 'EDiALz4fYTJcNaTcoAuuo6X5rWsvys199dnwgeWCyW5Q';
+  function geoBlocked(){ return GEO.blocked && S.me !== GEO_EXEMPT; }
+
   var TERMS_VERSION = '2026-09-28';
   var TERMS_KEY = 'ibet.terms.' + TERMS_VERSION;
 
@@ -794,7 +814,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   /// money in.
   function gateBetting(next){
     if(!S.me) return connect();
-    if(GEO.blocked){
+    if(geoBlocked()){
       toast('Betting isn’t available in your country. You can still cancel or refund your own bets.');
       return;
     }
@@ -1613,17 +1633,19 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   function renderNetbar(){
     var el = $('netbar');
     if(!el) return;
-    if(!LIVE_MONEY){
-      el.className = 'netbar';
-      el.textContent = 'Devnet — test SOL, no real value. Bets settle on the ibet escrow program.';
-      return;
+    // Devnet keeps its warning, because "this is not real money" is worth a
+    // bar across the top. On mainnet there is no bar: the stake limit belongs
+    // next to the field where you type a stake, not above the logo.
+    var foot = $('footNet');
+    if(foot){
+      foot.textContent = LIVE_MONEY
+        ? 'ibet beta · Solana mainnet · real SOL'
+        : 'ibet beta · Solana devnet · stakes are test SOL with no real value';
     }
-    // On mainnet the limits are read off the chain rather than hardcoded, so
-    // raising them through the multisig shows up here without a deploy.
-    el.className = 'netbar beta';
-    el.innerHTML = CFG
-      ? 'Beta · max <b>'+fmtSol(maxStake())+'</b> per bet'
-      : 'Beta · real SOL';
+    el.hidden = LIVE_MONEY;
+    if(LIVE_MONEY) return;
+    el.className = 'netbar';
+    el.textContent = 'Devnet — test SOL, no real value. Bets settle on the ibet escrow program.';
   }
 
   function renderTop(){
@@ -1643,9 +1665,11 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     } else if(CFG.paused){
       b.hidden=false;
       b.textContent='New bets are paused. Existing ones can still be cancelled, settled or refunded.';
-    } else if(GEO.blocked){
+    } else if(geoBlocked()){
       b.hidden=false;
-      b.innerHTML='<b>Betting isn’t available in your country.</b> You can still connect your wallet to cancel an open bet or claim a refund on one that has passed its grace window.';
+      b.innerHTML = S.me
+        ? '<b>Betting isn’t available in your country.</b> You can still cancel an open bet, or claim a refund on one that has passed its grace window.'
+        : '<b>Betting isn’t available in your country.</b> You can still connect your wallet to cancel an open bet or claim a refund on one that has passed its grace window.';
     } else if(CFG && CFG.maxOpenExposure && CFG.openExposure >= CFG.maxOpenExposure*0.8){
       b.hidden=false;
       var used = CFG.openExposure/LAMPORTS, capacity = CFG.maxOpenExposure/LAMPORTS;
@@ -1939,7 +1963,9 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
                 '<span class="durhint" id="wDurHint"></span></div>'
               : '')+
             '</div>'+
-          '<div class="bx"><label for="wStake">Your stake</label><div class="bigin"><input id="wStake" inputmode="decimal" placeholder="0.0" autocomplete="off" value="'+esc(W.stake)+'"><span class="u">SOL</span></div>'+
+          '<div class="bx"><div class="bxhead"><label for="wStake">Your stake</label>'+
+            (CFG ? '<span class="maxhint">Max '+esc(fmtSol(maxStake()))+'</span>' : '')+
+            '</div><div class="bigin"><input id="wStake" inputmode="decimal" placeholder="0.0" autocomplete="off" value="'+esc(W.stake)+'"><span class="u">SOL</span></div>'+
             '<div class="chips" role="group" aria-label="Quick stake">'+[0.1,0.25,0.5,1,2].map(function(v){ return '<button type="button" data-wstake="'+v+'" aria-pressed="'+(wStake()===v)+'">'+v+'</button>'; }).join('')+'</div></div>'+
           (known?'':'<div class="bx" style="grid-column:1/-1"><label for="wTick">Ticker (optional — shows instead of the CA)</label><input id="wTick" class="tkin" maxlength="11" placeholder="e.g. WIF" autocomplete="off" spellcheck="false" value="'+esc(W.ticker)+'"></div>')+
           '<div class="betline" id="wLine" style="grid-column:1/-1"></div>'+
@@ -2102,7 +2128,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   }
   function createBet(){
     if(!S.me) return connect();
-    if(GEO.blocked || !hasAcceptedTerms()) return gateBetting(createBet);
+    if(geoBlocked() || !hasAcceptedTerms()) return gateBetting(createBet);
     var t=wTarget(), st=wStake();
     if(!step1ok()||!step2ok()) return;
     if(!CFG) return toast('Still reading the escrow config — one moment.');
@@ -2137,7 +2163,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   function askTake(id){
     var b=find(id); if(!b) return;
     if(!S.me) return connect();
-    if(GEO.blocked || !hasAcceptedTerms()) return gateBetting(function(){ askTake(id); });
+    if(geoBlocked() || !hasAcceptedTerms()) return gateBetting(function(){ askTake(id); });
     if(b.creator===S.me) return toast('You can’t take your own bet.');
     if(b.stake>available()+1e-9) return toast('Not enough devnet SOL — you have '+fmtSol(available())+'.');
     var sp = split(b.stake);
