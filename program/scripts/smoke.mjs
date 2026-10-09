@@ -92,7 +92,7 @@ function ixCreate(creator, betId, args) {
     programId: PROGRAM_ID,
     keys: [
       meta(creator, true, true),
-      meta(configPda(), false, false),
+      meta(configPda(), false, true),
       meta(betPda(creator, betId), false, true),
       meta(SystemProgram.programId, false, false),
     ],
@@ -103,7 +103,7 @@ const ixTake = (taker, bet) => new TransactionInstruction({
   programId: PROGRAM_ID,
   keys: [
     meta(taker, true, true),
-    meta(configPda(), false, false),
+    meta(configPda(), false, true),
     meta(bet, false, true),
     meta(SystemProgram.programId, false, false),
   ],
@@ -111,7 +111,7 @@ const ixTake = (taker, bet) => new TransactionInstruction({
 });
 const ixCancel = (creator, bet) => new TransactionInstruction({
   programId: PROGRAM_ID,
-  keys: [meta(creator, true, true), meta(bet, false, true)],
+  keys: [meta(creator, true, true), meta(configPda(), false, true), meta(bet, false, true)],
   data: new Buf().disc('cancel_bet').out(),
 });
 

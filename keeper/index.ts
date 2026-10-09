@@ -445,7 +445,8 @@ function ixSettle(
     >[0]["data"],
     keys: [
       { pubkey: keeper, isSigner: true, isWritable: true },
-      { pubkey: configPda(), isSigner: false, isWritable: false },
+      // Writable: settling updates the exposure counter on the config.
+      { pubkey: configPda(), isSigner: false, isWritable: true },
       { pubkey: new PublicKey(bet.address), isSigner: false, isWritable: true },
       { pubkey: bet.creator, isSigner: false, isWritable: true },
       { pubkey: bet.taker!, isSigner: false, isWritable: true },

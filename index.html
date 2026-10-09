@@ -617,6 +617,10 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       return { pubkey:new w3.PublicKey(m[0]), isSigner:!!m[1], isWritable:!!m[2] };
     });
   }
+  // Account lists below are [pubkey, isSigner, isWritable] and have to match the
+  // program's Accounts structs exactly. `config` is writable on every one of
+  // them: it carries the running exposure counter, which every path updates.
+  // `program/scripts/check-clients.mjs` checks these against the IDL.
   function ix(keys, data){
     return new w3.TransactionInstruction({ programId:PROGRAM_ID, keys:metas(keys), data:data });
   }
@@ -628,13 +632,13 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       .u64(a.betId).key(a.ca).u8(a.dir==='above'?0:1)
       .u64(a.target).u64(a.startMc||0).u64(Math.round(a.stake*LAMPORTS)).i64(Math.round(a.durSecs))
       .out();
-    return { ix: ix([[creator,1,1],[configPda(),0,0],[pda,0,1],[SYS,0,0]], data), pda: pda.toBase58() };
+    return { ix: ix([[creator,1,1],[configPda(),0,1],[pda,0,1],[SYS,0,0]], data), pda: pda.toBase58() };
   }
   function ixTakeBet(taker, pda){
-    return ix([[taker,1,1],[configPda(),0,0],[pda,0,1],[SYS,0,0]], new Buf().disc(IX.takeBet).out());
+    return ix([[taker,1,1],[configPda(),0,1],[pda,0,1],[SYS,0,0]], new Buf().disc(IX.takeBet).out());
   }
   function ixCancelBet(creator, pda){
-    return ix([[creator,1,1],[pda,0,1]], new Buf().disc(IX.cancelBet).out());
+    return ix([[creator,1,1],[configPda(),0,1],[pda,0,1]], new Buf().disc(IX.cancelBet).out());
   }
   function ixSettleBet(resolver, b, outcome, observedMc, observedAtMs){
     var data = new Buf().disc(IX.settleBet)
@@ -642,10 +646,10 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       .u64(Math.round(observedMc))
       .i64(Math.round(observedAtMs/1000))
       .out();
-    return ix([[resolver,1,1],[configPda(),0,0],[b.pda,0,1],[b.creator,0,1],[b.taker,0,1],[CFG.feeWallet,0,1]], data);
+    return ix([[resolver,1,1],[configPda(),0,1],[b.pda,0,1],[b.creator,0,1],[b.taker,0,1],[CFG.feeWallet,0,1]], data);
   }
   function ixRefund(caller, b){
-    return ix([[caller,1,1],[configPda(),0,0],[b.pda,0,1],[b.creator,0,1],[b.taker,0,1]],
+    return ix([[caller,1,1],[configPda(),0,1],[b.pda,0,1],[b.creator,0,1],[b.taker,0,1]],
       new Buf().disc(IX.refundExpired).out());
   }
 
