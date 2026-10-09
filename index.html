@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="mask-icon" href="/favicon.svg" color="#000000">
 <title>ibet — Bet on what happens</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -193,6 +195,10 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .betgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .bx{border:1px solid var(--row-line);border-radius:14px;padding:18px 22px;display:flex;flex-direction:column;gap:12px}
 .bx>label,.bx>.lbl{font-size:14px;color:var(--muted)}
+.sharelink{margin:0 0 18px;padding:11px 13px;border:1px solid var(--row-line);border-radius:10px;
+  background:var(--bg);color:var(--text2);font-size:13px;word-break:break-all;line-height:1.5}
+/* Brief ring on the bet someone arrived here to see. */
+.row.shared{outline:2px solid var(--flame);outline-offset:2px;transition:outline-color .5s ease}
 .bxhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
 .bxhead>label{flex:0 1 auto}
 /* Read off the on-chain config, so raising the cap through the multisig shows
@@ -1614,7 +1620,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       var extra = b.status==='settled'
         ? '<span class="evid">'+esc(evidenceLine(b))+'</span>'
         : (live ? '<span class="nowcap">now <b>'+fmtCap(live)+'</b></span>' : '');
-      return '<article class="row" aria-label="'+esc(label(b)+(b.dir==='above'?' above ':' below ')+fmtCap(b.target)+' market cap')+'">'+
+      return '<article class="row" data-id="'+esc(b.id)+'" aria-label="'+esc(label(b)+(b.dir==='above'?' above ':' below ')+fmtCap(b.target)+' market cap')+'">'+
         '<div class="cell"><button type="button" class="coinbtn" data-chart="'+esc(b.ca)+'" data-bet="'+esc(b.id)+'" aria-label="Open the chart for '+esc(label(b))+'">'+coinAva(b.ca, badge(b))+'</button><div class="stack"><span class="t"><button type="button" class="coinbtn" data-chart="'+esc(b.ca)+'" data-bet="'+esc(b.id)+'">'+esc(label(b))+'</button></span><span class="s ca"><button type="button" class="cabtn" data-copy="'+esc(b.ca)+'" aria-label="Copy contract address">'+esc(shortCa(b.ca))+'</button><a href="https://dexscreener.com/solana/'+esc(b.ca)+'" target="_blank" rel="noopener noreferrer" aria-label="Open chart on DexScreener">'+IC.ext+'</a>'+
         '<a class="exlink" href="'+esc(explorer('address',b.pda))+'" target="_blank" rel="noopener noreferrer" aria-label="View this bet\u2019s escrow account on Solana Explorer">escrow '+IC.ext+'</a></span></div></div>'+
         '<div class="cell" style="gap:14px">'+arrow(b.dir)+'<div class="stack" style="gap:2px"><span class="t big">'+fmtCap(b.target)+'</span><span class="s sm">'+(b.dir==='above'?'Higher':'Lower')+(isFinite(b.startMc)&&b.startMc>0?' · from '+fmtCap(b.startMc):' market cap')+'</span>'+extra+'</div></div>'+
@@ -1719,6 +1725,77 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   var sb = (window.supabase && window.supabase.createClient) ? window.supabase.createClient(SB_URL, SB_KEY) : null;
   function rpc(name,args){ return sb.rpc(name,args||{}).then(function(r){ if(r.error) throw r.error; return r.data; }); }
   function find(id){ for(var i=0;i<S.bets.length;i++) if(S.bets[i].id===id) return S.bets[i]; return null; }
+
+  // ── sharing a bet ────────────────────────────────────────────────────────
+  // A bet's address is its PDA, which is already public and already in the
+  // page, so a link is just that address. Nothing about it is secret: anyone
+  // with the link sees what anyone on the site sees.
+  function betLink(id){ return location.origin + '/?bet=' + encodeURIComponent(id); }
+
+  function shareBet(id, heading){
+    var url = betLink(id);
+    var native = typeof navigator.share === 'function';
+    openModal('<h3 id="mTitle">'+esc(heading || 'Share this bet')+'</h3>'+
+      '<p style="margin:0 0 14px;font-size:14px;color:var(--muted)">Anyone with this link lands on your bet and can take the other side.</p>'+
+      '<p class="sharelink">'+esc(url)+'</p>'+
+      '<div class="mact">'+
+        '<button class="wbtn ghost" data-close="1">Done</button>'+
+        (native ? '<button class="wbtn ghost" id="shareNative">Share…</button>' : '')+
+        '<button class="wbtn" data-copy="'+esc(url)+'" data-copy-label="Link copied">Copy link</button>'+
+      '</div>',
+      function(){
+        var n=$('shareNative');
+        if(n) n.onclick=function(){
+          navigator.share({ title:'ibet', text:'Take the other side of my bet on ibet', url:url })
+            .catch(function(){ /* dismissed, or the browser refused */ });
+        };
+      });
+  }
+
+  /// A visitor arriving on ?bet=<address> should land on that bet rather than
+  /// the top of the list. Runs after every load until the bet turns up, since
+  /// the first paint happens before the chain has answered.
+  var SHARED = (function(){
+    try{ var v=new URLSearchParams(location.search).get('bet'); return CA_RE.test(v||'') ? v : null; }
+    catch(_){ return null; }
+  })();
+
+  var sharedTimer = null;
+  function sharedCard(id){
+    return document.querySelector('.row[data-id=\"'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'\"]');
+  }
+
+  function focusShared(){
+    if(!SHARED) return;
+    var b = find(SHARED);
+    if(!b) return;                       // not loaded yet, or gone
+    // Make sure the tab it lives on is the one being shown.
+    var want = b.status==='settled' ? 'settled' : 'open';
+    if(S.tab!==want || S.view!=='bet'){ S.view='bet'; S.tab=want; render(); }
+
+    // Deliberately late. Several things render the list on their own schedule
+    // at boot, and a re-render replaces the card mid-flight, which cancels a
+    // smooth scroll and drops the highlight. Waiting for them to settle is
+    // what makes this land.
+    clearTimeout(sharedTimer);
+    sharedTimer = setTimeout(function(){
+      var id = SHARED;
+      if(!id) return;
+      var el = sharedCard(id);
+      if(!el) return;                    // try again after the next load
+      SHARED = null;
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      el.classList.add('shared');
+      setTimeout(function(){
+        // Re-query: the node may have been replaced since.
+        var again = sharedCard(id);
+        if(again) again.classList.remove('shared');
+      }, 4000);
+      // Leave the address out of the URL afterwards, so a refresh or a
+      // bookmark is just the site.
+      try{ history.replaceState(null, '', location.pathname); }catch(_){}
+    }, 400);
+  }
   // Supabase RPC failures (the trending list).
   function onWriteError(e){
     var m=String((e&&e.message)||'');
@@ -1741,6 +1818,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       S.bets = live.concat(HIST.settled);
       if(S.mode==='loading') S.mode='live';
       render();
+      focusShared();
     }, function(e){
       if(window.console) console.error('ibet: could not read bets', e);
       if(S.mode==='loading'){ S.mode='live'; render(); }
@@ -2158,6 +2236,9 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       toast('Bet created and staked. Waiting for a taker.');
       renderWizard(false);
       $('tabs').scrollIntoView({behavior:'smooth',block:'start'});
+      // A bet needs someone on the other side, so the link to it is the most
+      // useful thing to hand over the moment it exists.
+      shareBet(built.pda, 'Bet created — send it to someone');
       return refreshAll();
     }).catch(onChainError).then(function(){
       var b=$('wCreate'); if(b) b.disabled=false;
@@ -2284,7 +2365,8 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   document.addEventListener('click',function(e){
     var cp=e.target.closest('[data-copy]');
     if(cp){
-      var v=cp.getAttribute('data-copy'), ok=function(){ toast('CA copied'); };
+      var v=cp.getAttribute('data-copy');
+      var ok=function(){ toast(cp.getAttribute('data-copy-label') || 'CA copied'); };
       var fb=function(){ var ta=document.createElement('textarea'); ta.value=v; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); ok(); }catch(_){ toast(v); } ta.remove(); };
       try{ navigator.clipboard.writeText(v).then(ok,fb); }catch(_){ fb(); }
       return;

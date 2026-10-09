@@ -2,11 +2,17 @@
 //
 //   GET /token-meta?ca=<mint>[,<mint>...]
 //
-// Lookup order, first hit wins:
+// Lookup order, per field rather than per source:
 //   1. DexScreener token API   — info.imageUrl, baseToken.symbol/name
 //   2. GeckoTerminal token info — image_url, symbol, name
 //   3. Metaplex metadata on chain — the account's uri, then `image` from that
 //      JSON, with ipfs:// rewritten to a gateway
+//
+// "First hit wins" was wrong and it showed. DexScreener knows QUBIT's ticker
+// and name but carries no image for it, so it answered, the chain stopped
+// there, and the coin rendered as a ticker badge — while GeckoTerminal had the
+// logo all along. Each source now fills only the fields still missing, and the
+// walk stops once there is nothing left to find.
 //
 // Step 3 is why this runs server-side: the browser cannot reach a mainnet RPC
 // (every free one refuses browser traffic), and the coins are mainnet tokens
@@ -232,17 +238,37 @@ async function fromChain(ca: string): Promise<Meta | null> {
 }
 
 async function resolve(ca: string, only?: string | null): Promise<Meta> {
+  const empty: Meta = { ca, symbol: null, name: null, image_url: null, source: "none" };
+
   // `only` forces one step, for checking the fallbacks that a working step 1
   // would otherwise hide.
-  const found = only === "dexscreener"   ? await fromDexScreener(ca)
+  if (only) {
+    const one = only === "dexscreener"   ? await fromDexScreener(ca)
               : only === "geckoterminal" ? await fromGeckoTerminal(ca)
               : only === "chain"         ? await fromChain(ca)
-              : (await fromDexScreener(ca)
-                ?? await fromGeckoTerminal(ca)
-                ?? await fromChain(ca));
+              : null;
+    return one ?? empty;
+  }
+
+  // Earlier sources win a field, later ones fill what is still blank. The
+  // logo is what people actually see, so a source that has a ticker but no
+  // image must not end the search.
+  const out: Meta = { ...empty };
+  const used: string[] = [];
+  for (const step of [fromDexScreener, fromGeckoTerminal, fromChain]) {
+    if (out.symbol && out.name && out.image_url) break;
+    const m = await step(ca);
+    if (!m) continue;
+    let took = false;
+    if (!out.symbol && m.symbol) { out.symbol = m.symbol; took = true; }
+    if (!out.name && m.name) { out.name = m.name; took = true; }
+    if (!out.image_url && m.image_url) { out.image_url = m.image_url; took = true; }
+    if (took) used.push(m.source);
+  }
   // A miss is cached too, so a coin with no metadata anywhere is not looked up
   // again by every visitor for the next day.
-  return found ?? { ca, symbol: null, name: null, image_url: null, source: "none" };
+  out.source = used.join("+") || "none";
+  return out;
 }
 
 Deno.serve(async (req: Request) => {

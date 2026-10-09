@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- The ibet wordmark, white on black, as the tab icon.
+       The source tile has a lot of black around the letters; at 16px that
+       would leave the word about six pixels tall and unreadable, so the
+       wordmark fills more of the square here. Same type treatment as the
+       header logo: a bold grotesque, tightly tracked, lowercase. -->
+  <rect width="64" height="64" fill="#000"/>
+  <text x="32" y="33" fill="#fff"
+        font-family="'Inter Tight','Inter','Helvetica Neue',Helvetica,Arial,sans-serif"
+        font-size="34" font-weight="800" letter-spacing="-1.8"
+        text-anchor="middle" dominant-baseline="central">ibet</text>
+</svg>
