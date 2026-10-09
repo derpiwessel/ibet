@@ -225,8 +225,6 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .chips{display:flex;gap:8px;flex-wrap:wrap}
 .chips button{height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--field-line);background:transparent;color:var(--muted);font-size:15px}
 .chips button[aria-pressed="true"]{background:var(--btn);border-color:var(--btn);color:var(--btn-fg);font-weight:600}
-.tkin{background:transparent;border:none;outline:none;font-size:20px;font-weight:600;color:var(--text);padding:0;text-transform:uppercase}
-.tkin::placeholder{text-transform:none;color:#4A4A50;font-weight:500}
 .wnav{display:flex;justify-content:space-between;gap:12px;margin-top:28px}
 .wnav .wbtn{height:60px;padding:0 30px;font-size:17px}
 .wnav .nextbtn{height:60px;font-size:17px;padding:0 30px}
@@ -2018,7 +2016,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   function pctStr(t,c){ var p=(t/c-1)*100; return (p>0?'+':'')+(Math.abs(p)>=100?Math.round(p):+p.toFixed(1))+'%'; }
   function hasCur(){ var c=wCur(); return isFinite(c)&&c>0; }
   function dirOk(){ if(!hasCur()) return true; var t=wTarget(), c=wCur(); return W.dir==='above' ? t>c : t<c; }
-  function step2ok(){ var t=wTarget(), st=wStake(); return !!W.dir && isFinite(t)&&t>0 && dirOk() && isFinite(st)&&st>0 && durOk(W.dur) && (!W.ticker||TICK_RE.test(W.ticker)); }
+  function step2ok(){ var t=wTarget(), st=wStake(); return !!W.dir && isFinite(t)&&t>0 && dirOk() && isFinite(st)&&st>0 && durOk(W.dur); }
   var MULTS = { above:[[1.5,'+50%'],[2,'2x'],[3,'3x'],[5,'5x'],[10,'10x']], below:[[0.75,'−25%'],[0.5,'−50%'],[0.25,'−75%'],[0.1,'−90%']] };
 
   function renderStepper(){
@@ -2070,7 +2068,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
         }).join('')+
         '</div></div>';
     } else if(W.step===2){
-      var kt = findTrend(W.ca), known=!!kt, hi=W.dir==='above';
+      var kt = findTrend(W.ca), hi=W.dir==='above';
       h='<div class="wiz-in" style="max-width:860px"><h2 id="wTitle">What’s your call?</h2>'+coinHead()+
         '<div id="wizChartSlot"></div>'+
         '<p class="mcnote" style="margin:-8px 0 20px;text-align:center">Mcap = price × total supply — the same number the bet settles on.</p>'+
@@ -2101,7 +2099,6 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
             (CFG ? '<span class="maxhint">Max '+esc(fmtSol(maxStake()))+'</span>' : '')+
             '</div><div class="bigin"><input id="wStake" inputmode="decimal" placeholder="0.0" autocomplete="off" value="'+esc(W.stake)+'"><span class="u">SOL</span></div>'+
             '<div class="chips" role="group" aria-label="Quick stake">'+[0.1,0.25,0.5,1,2].map(function(v){ return '<button type="button" data-wstake="'+v+'" aria-pressed="'+(wStake()===v)+'">'+v+'</button>'; }).join('')+'</div></div>'+
-          (known?'':'<div class="bx" style="grid-column:1/-1"><label for="wTick">Ticker (optional — shows instead of the CA)</label><input id="wTick" class="tkin" maxlength="11" placeholder="e.g. WIF" autocomplete="off" spellcheck="false" value="'+esc(W.ticker)+'"></div>')+
           '<div class="betline" id="wLine" style="grid-column:1/-1"></div>'+
         '</div>' : '')+
         '<p class="whint" id="wHint2"></p>'+
@@ -2148,7 +2145,6 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       if(wizCard && wizCard.ca===W.ca) wizCard.setTarget(t, W.dir);
       document.querySelectorAll('[data-wmult]').forEach(function(b){ b.setAttribute('aria-pressed', String(+b.dataset.wmult===W.mult)); });
       if(W.dir && isFinite(t)&&t>0 && !dirOk()) msg = W.dir==='above' ? 'For “Higher”, the target has to be above '+fmtCap(c)+'.' : 'For “Lower”, the target has to be below '+fmtCap(c)+'.';
-      else if(W.ticker && !TICK_RE.test(W.ticker)) msg='Ticker: letters and numbers only, max 10.';
       else if(!durOk(W.dur)) msg='Pick a length between 5 minutes and 30 days.';
       else if(isFinite(st) && st>0 && CFG && (st<minStake()-1e-9 || st>maxStake()+1e-9)) msg='Stake has to be between '+fmtSol(minStake())+' and '+fmtSol(maxStake())+'.';
       else if(isFinite(st) && st>0 && S.me && st>available()+1e-9) msg='Heads up: you only have '+fmtSol(available())+' in your wallet.';
@@ -2174,7 +2170,6 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     if(id==='wCa') W.ca=e.target.value;
     else if(id==='wTarget'){ W.target=e.target.value; W.mult=null; }
     else if(id==='wStake') W.stake=e.target.value;
-    else if(id==='wTick') W.ticker=e.target.value.trim().replace(/^\$/,'');
     else if(id==='wDurN'){ W.durN=e.target.value; W.dur=customDur(); }
     else return;
     wizMeta();
