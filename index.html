@@ -224,22 +224,38 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .rowx:focus-visible{outline:2px solid var(--flame);outline-offset:2px}
 .rowx.on{transform:rotate(180deg);color:var(--text)}
 .rowp-wrap{grid-column:1/-1}
-.rowp{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) auto;gap:28px;align-items:center;
-  padding:18px 2px 4px;border-top:1px solid var(--row-line);margin-top:2px}
-.rowp-head{margin:0;font-size:15.5px;line-height:1.5;color:var(--text2)}
+/* Wrapping is the layout, not a fallback for small screens. The sentence
+   needs room to stay a sentence, so when the stats and the button no longer
+   leave it enough, it takes a line of its own — which is what happens on any
+   window narrower than roughly 1300px. */
+.rowp{display:flex;flex-wrap:wrap;align-items:center;gap:18px 26px;padding:20px 2px 6px;
+  border-top:1px solid var(--row-line);margin-top:2px}
+.rowp-lead{display:flex;align-items:center;gap:18px;flex:1 1 440px;min-width:0}
+.rowp-badge{display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex:none;
+  border-radius:50%;color:#0A0A0B}
+.rowp-badge.up{background:var(--green)}
+.rowp-badge.down{background:var(--red)}
+.rowp-say{flex:1 1 auto;min-width:0}
+.rowp-head{margin:0;font-size:16px;line-height:1.45;color:var(--text)}
 .rowp-head b{color:var(--text)}
-.rowp-rule{margin:7px 0 0;font-size:13.5px;line-height:1.6;color:var(--muted)}
-.rowp-when{display:flex;align-items:center;gap:9px;margin:11px 0 0;font-size:13.5px;color:var(--muted)}
+.rowp-rule{margin:5px 0 0;font-size:13.5px;line-height:1.55;color:var(--muted)}
+.rowp-when{display:flex;align-items:center;gap:9px;margin:9px 0 0;font-size:13.5px;color:var(--muted)}
 .rowp-when svg{width:17px;height:17px;flex:none}
-.rowp-nums{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;margin:0}
-.rowp-nums>div{display:flex;flex-direction:column;gap:3px;min-width:0}
-.rowp-nums dt{font-size:12.5px;color:var(--muted)}
-.rowp-nums dd{margin:0;font-size:16px;font-weight:600;color:var(--text2)}
-.rowp-nums .win dd{color:var(--text)}
-.rowp-act{display:flex;justify-content:flex-end;gap:10px}
-@media (max-width:860px){
-  .rowp{grid-template-columns:1fr;gap:18px}
-  .rowp-act .wbtn{width:100%}
+/* Each stat is its own column behind a hairline, so the panel reads as a
+   continuation of the row above it rather than a separate card. */
+.rowp-stat{display:flex;flex-direction:column;gap:4px;flex:none;min-width:116px;
+  padding-left:26px;border-left:1px solid var(--row-line)}
+.rowp-stat .k{font-size:13px;color:var(--muted)}
+.rowp-stat .v{font-size:19px;font-weight:600;color:var(--text)}
+.rowp-stat .sub{font-size:12px;color:var(--muted)}
+/* margin-left:auto keeps the actions on the right whether they share the
+   line with the stats or have wrapped onto one of their own. */
+.rowp-act{flex:none;display:flex;justify-content:flex-end;gap:10px;margin-left:auto}
+@media (max-width:640px){
+  .rowp-stat{padding-left:0;border-left:none;border-right:1px solid var(--row-line);padding-right:22px}
+  .rowp-stat:last-of-type{border-right:none}
+  .rowp-act{flex:1 1 100%}
+  .rowp-act .wbtn{flex:1}
 }
 .bxhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
 .bxhead>label{flex:0 1 auto}
@@ -1508,18 +1524,31 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
           : '<button class="wbtn" data-act="take" data-id="'+esc(b.id)+'"'+(busy?' disabled':'')+'>'+(busy?'Taking…':'Accept bet · '+fmtSol(b.stake))+'</button>');
     }
 
+    // The badge shows the direction the reader needs, which is the opposite
+    // of the creator's call when you would be taking the other side.
+    var needUp = (b.status==='open' && !mine) ? (b.dir!=='above') : (b.dir==='above');
+    var badgeSvg = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" '+
+      'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+
+      '<path d="'+(needUp?'M5.5 15.5l6.5-6.5 6.5 6.5':'M5.5 8.5l6.5 6.5 6.5-6.5')+'"/></svg>';
+
     return '<div class="rowp">'+
-      '<div class="rowp-say">'+
-        '<p class="rowp-head">'+head+'</p>'+
-        '<p class="rowp-rule">'+esc(rule)+'</p>'+
-        '<p class="rowp-when">'+IC.clock+'<span>'+esc(timing)+'</span></p>'+
+      '<div class="rowp-lead">'+
+        '<span class="rowp-badge '+(needUp?'up':'down')+'" aria-hidden="true">'+badgeSvg+'</span>'+
+        '<div class="rowp-say">'+
+          '<p class="rowp-head">'+head+'</p>'+
+          '<p class="rowp-rule">'+esc(rule)+'</p>'+
+          '<p class="rowp-when">'+IC.clock+'<span>'+esc(timing)+'</span></p>'+
+        '</div>'+
       '</div>'+
-      '<dl class="rowp-nums">'+
-        '<div><dt>'+(b.status==='open' && !mine ? 'Your stake' : 'Stake each')+'</dt><dd>'+fmtSol(b.stake)+'</dd></div>'+
-        '<div><dt>Total pot</dt><dd>'+fmtSol(sp.pot)+'</dd></div>'+
-        '<div><dt>Fee ('+(feeBps()/100)+'%)</dt><dd>'+fmtSol(sp.fee)+'</dd></div>'+
-        '<div class="win"><dt>Winner gets</dt><dd>'+fmtSol(sp.win)+'</dd></div>'+
-      '</dl>'+
+      '<div class="rowp-stat">'+
+        '<span class="k">'+(b.status==='open' && !mine ? 'Your stake' : 'Stake each')+'</span>'+
+        '<span class="v">'+fmtSol(b.stake)+'</span>'+
+      '</div>'+
+      '<div class="rowp-stat">'+
+        '<span class="k">Total pot</span>'+
+        '<span class="v">'+fmtSol(sp.pot)+'</span>'+
+        '<span class="sub">Winner gets '+fmtSol(sp.win)+'</span>'+
+      '</div>'+
       (act ? '<div class="rowp-act">'+act+'</div>' : '')+
     '</div>';
   }
@@ -1830,6 +1859,12 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   // same coloured letter badge the site uses everywhere else.
   var CARD_W = 1200, CARD_H = 900;
 
+  /// The coin's logo, re-served by our own function with an access-control
+  /// header. Straight from the CDN it taints the canvas and the export throws,
+  /// which is why the card fell back to a letter badge even when the logo was
+  /// perfectly available.
+  function logoProxy(ca){ return SB_URL + '/functions/v1/token-meta?logo=' + encodeURIComponent(ca); }
+
   function loadCorsImage(src){
     return new Promise(function(res){
       if(!src) return res(null);
@@ -1912,7 +1947,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     var UIR   = "500 %s 'Inter',Helvetica,Arial,sans-serif";
 
     return (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve())
-      .then(function(){ return loadCorsImage(m.image_url || null); })
+      .then(function(){ return loadCorsImage(m.image_url ? logoProxy(b.ca) : null); })
       .then(function(logo){
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, CARD_W, CARD_H);
@@ -1944,7 +1979,10 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
         ctx.save();
         ctx.beginPath(); ctx.arc(av.x + av.r, av.y + av.r, av.r, 0, Math.PI*2); ctx.clip();
         if(logo){
-          ctx.drawImage(logo, av.x, av.y, av.r*2, av.r*2);
+          // Centre-crop to a square, so a wide or tall logo is not squashed.
+          var side = Math.min(logo.width, logo.height);
+          ctx.drawImage(logo, (logo.width-side)/2, (logo.height-side)/2, side, side,
+            av.x, av.y, av.r*2, av.r*2);
         } else {
           ctx.fillStyle = coinColor(b.ca);
           ctx.fillRect(av.x, av.y, av.r*2, av.r*2);

@@ -1,6 +1,7 @@
 // Resolves a coin's logo, ticker and name, and caches it in `token_meta`.
 //
-//   GET /token-meta?ca=<mint>[,<mint>...]
+//   GET /token-meta?ca=<mint>[,<mint>...]   metadata as JSON
+//   GET /token-meta?logo=<mint>              that coin's image, with CORS
 //
 // Lookup order, per field rather than per source:
 //   1. DexScreener token API   — info.imageUrl, baseToken.symbol/name
@@ -21,6 +22,14 @@
 // Anyone may call this. It only reads public token data and fills a public
 // cache, so there is nothing to protect beyond refusing input that is not an
 // address and capping how many are asked for at once.
+//
+// `?logo=` exists because the share card is drawn on a canvas, and a logo
+// fetched from someone else's CDN without an access-control header taints it
+// — the browser then refuses to export the image at all. This re-serves the
+// same bytes with a header the canvas accepts. It takes a mint address, never
+// a URL: the address is looked up in our own cache and only that stored URL is
+// fetched, so there is nothing here that will fetch wherever a caller points
+// it.
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { Connection, PublicKey } from "npm:@solana/web3.js@1.98.4";
@@ -38,6 +47,8 @@ const IPFS_GATEWAYS = [
 ];
 const FRESH_FOR_MS = 24 * 60 * 60 * 1000;
 const MAX_BATCH = 20;
+/// Generous for a logo, small enough that nothing silly gets proxied.
+const LOGO_MAX_BYTES = 3 * 1024 * 1024;
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 const mainnet = new Connection(DATA_RPC, "confirmed");
@@ -286,6 +297,36 @@ Deno.serve(async (req: Request) => {
 
   try {
     const params = new URL(req.url).searchParams;
+
+    const logoFor = params.get("logo");
+    if (logoFor) {
+      if (!BASE58.test(logoFor)) return json({ error: "not an address" }, 400);
+      const { data: row } = await db
+        .from("token_meta").select("image_url").eq("ca", logoFor).maybeSingle();
+      const src = row?.image_url;
+      if (!src) return json({ error: "no image for that coin" }, 404);
+      try {
+        const res = await fetch(src, { signal: AbortSignal.timeout(8000) });
+        const type = res.headers.get("content-type") ?? "";
+        if (!res.ok || !type.startsWith("image/")) {
+          return json({ error: "upstream did not return an image" }, 502);
+        }
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (bytes.byteLength > LOGO_MAX_BYTES) return json({ error: "image too large" }, 502);
+        return new Response(bytes, {
+          headers: {
+            "content-type": type,
+            "access-control-allow-origin": "*",
+            // Logos effectively never change, and the canvas asks for this on
+            // every card it draws.
+            "cache-control": "public, max-age=604800, immutable",
+          },
+        });
+      } catch {
+        return json({ error: "could not fetch the image" }, 502);
+      }
+    }
+
     const only = params.get("only");
     const raw = params.get("ca") ?? "";
     const wanted = [...new Set(raw.split(",").map((s) => s.trim()).filter((s) => BASE58.test(s)))]
