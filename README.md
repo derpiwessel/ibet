@@ -537,7 +537,6 @@ Done for the mainnet launch:
       deploy wallet holds nothing.
 - [x] A second price source with a 5% tolerance that blocks rather than decides,
       and both values recorded on every settlement.
-- [x] 18+ and terms confirmation per wallet.
 - [x] Alerts to Discord, and a smoke test that asserts every lamport on all
       three paths against the live program.
 
@@ -546,9 +545,11 @@ Still open, and the caps are what stand in for them:
 - [ ] **Independent security audit of the program and the keeper.** This has not
       happened. The 10 SOL ceiling is a bound on what an undiscovered bug can
       cost, not a substitute for the audit.
-- [ ] **Real terms of service.** `terms.html` is developer-written placeholder
-      text describing how the product works. A lawyer has not seen it, and the
-      footer still says to put a contact address there.
+- [ ] **Terms of service, of any kind.** There are none. The placeholder page
+      and the 18+ confirmation were both removed at the owner's instruction, so
+      nothing on the site states how a bet is judged, what the fee is, or that
+      settlement is final — and nobody is asked to agree to anything before
+      staking real SOL.
 - [ ] **Legal review, and it is now the sharpest of these.** The owner is in
       the Netherlands, where offering real-money betting needs a
       Kansspelautoriteit licence. ibet is open to every country, including NL —

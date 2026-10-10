@@ -42,9 +42,9 @@ working environment to test against.
 | Alerts | Discord webhook in Supabase Vault, delivery tested ✅ |
 | Caps | 0.01–0.1 SOL per side, 10 SOL total escrow |
 
-Still open: the terms text is a developer-written placeholder in `terms.html`
-and has not been through a lawyer. The phase 3 brief geo-blocks NL because
-offering real-money betting there needs a Kansspelautoriteit licence.
+Still open at the time of launch: placeholder terms and an NL geo-block. Both
+have since been removed at the owner's instruction — see "What is still open"
+in the README for where that leaves things.
 
 ---
 
