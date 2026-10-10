@@ -42,6 +42,7 @@ a{color:inherit}
 .wbtn:active{transform:scale(.98)}
 .wbtn:disabled{opacity:.45;cursor:not-allowed}
 .wbtn.ghost{background:transparent;color:var(--text);border:1px solid var(--field-line)}
+.wbtn.sm{height:40px;padding:0 16px;font-size:14px;border-radius:9px}
 
 /* ── nav ── */
 header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
@@ -51,9 +52,22 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .links button{background:none;border:none;color:var(--muted);font-size:15px;font-weight:400;padding:10px 6px;min-height:44px}
 .links button[aria-current="page"]{color:var(--text);font-weight:500}
 .navr{justify-self:end;display:flex;align-items:center;gap:12px}
-.balpill{font-size:14px;color:var(--muted);white-space:nowrap}
+.balpill{font-size:14px;color:var(--muted);white-space:nowrap;background:none;border:none;
+  padding:0 2px;font-family:inherit;cursor:pointer}
+.balpill:hover b{text-decoration:underline;text-underline-offset:3px}
+.balpill:focus-visible{outline:2px solid var(--flame);outline-offset:3px;border-radius:4px}
 .balpill b{color:var(--text);font-weight:600}
-@media (max-width:760px){.nav{grid-template-columns:auto 1fr;height:76px}.links{display:none}.logo{font-size:38px}.navr{justify-self:end}.balpill{display:none}}
+/* Still shown on a phone — knowing what is on the wallet is the point of it
+   being there — just without the cluster suffix, and with tighter buttons so
+   the three of them fit a 375px bar. */
+@media (max-width:720px){
+  .balpill .sfx{display:none}
+  .wbtn.sm{height:38px;padding:0 12px;font-size:13.5px}
+  .navr{gap:8px}
+}
+/* The balance used to be hidden here; it stays now, because what is on the
+   wallet is the thing the header is for. */
+@media (max-width:760px){.nav{grid-template-columns:auto 1fr;height:76px}.links{display:none}.logo{font-size:38px}.navr{justify-self:end}}
 
 /* ── hero ── */
 .hero{position:relative;padding:34px 0 72px;text-align:center}
@@ -212,14 +226,6 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
   background:var(--bg);color:var(--text2);font-size:13px;word-break:break-all;line-height:1.5}
 
 /* ── the wallet screens ────────────────────────────────────────────────── */
-.wchoose{display:grid;gap:10px;margin:0 0 18px}
-.wopt{display:flex;flex-direction:column;gap:4px;text-align:left;padding:15px 16px;border-radius:12px;
-  border:1px solid var(--row-line);background:transparent;color:var(--text);font:inherit;cursor:pointer;
-  transition:border-color .15s ease,background .15s ease}
-.wopt:hover{border-color:var(--muted);background:var(--row)}
-.wopt:focus-visible{outline:2px solid var(--flame);outline-offset:2px}
-.wopt b{font-size:15.5px}
-.wopt span{font-size:13.5px;color:var(--muted);line-height:1.5}
 .flab{display:block;margin:0 0 6px;font-size:13px;color:var(--muted)}
 .fin{width:100%;margin:0 0 14px;padding:11px 13px;border:1px solid var(--row-line);border-radius:10px;
   background:var(--bg);color:var(--text);font:inherit;font-size:15px;outline:none}
@@ -230,8 +236,6 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .linkish:hover{color:var(--text)}
 .wrow{display:flex;gap:10px;margin:0 0 14px}
 .wrow .wbtn{flex:1}
-.termsrow2{display:flex;gap:10px;align-items:flex-start;margin:0 0 18px;font-size:14px;color:var(--text2)}
-.termsrow2 input{margin-top:3px;width:18px;height:18px;accent-color:var(--green)}
 .qrbox{display:flex;justify-content:center;margin:0 0 14px}
 .qrbox canvas{border-radius:10px;display:block}
 /* Brief ring on the bet someone arrived here to see. */
@@ -435,11 +439,13 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       <button data-go="leader">Leaderboard</button>
     </nav>
     <div class="navr">
-      <span class="balpill" id="balpill"></span>
-      <button class="wbtn" id="walletBtn" data-wallet="1">
-        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5 4h12a2 2 0 0 1 2 2v1H5.5a.5.5 0 0 0 0 1H20a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Zm12 10.25a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5Z"/></svg>
-        <span id="walletLbl">Connect Wallet</span>
-      </button>
+      <!-- There is nothing to connect to, so the header says what you can
+           actually do with the wallet, and how much is on it. The balance is
+           also the way into the account: address, private key, explorer. -->
+      <button class="balpill" id="balpill" type="button" data-wallet="1"
+              aria-label="Your wallet"></button>
+      <button class="wbtn sm" id="depBtn" type="button">Deposit</button>
+      <button class="wbtn sm ghost" id="wdBtn" type="button">Withdraw</button>
     </div>
   </div>
 </header>
@@ -465,7 +471,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   <div class="hero-in">
     <h1 id="h1">Bet on<br>what happens.</h1>
     <p>Pick a coin. Set a target. Find a taker. Winner takes it all.</p>
-    <button class="wbtn" id="heroCta" data-wallet="1">Connect Wallet</button>
+    <button class="wbtn" id="heroCta" data-wallet="1">Create a bet</button>
   </div>
 </section>
 
@@ -1817,11 +1823,15 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
 
   function renderTop(){
     renderNetbar();
-    var bal = S.me ? '<b>'+fmtSol(available())+'</b>' + (LIVE_MONEY ? '' : ' · devnet') : '';
-    $('balpill').innerHTML=bal;
+    // Small, quiet, and clickable: the amount on the wallet, and the way in
+    // to its address and key.
+    $('balpill').innerHTML = S.me
+      ? '<b>'+fmtSol(available())+'</b>'+(LIVE_MONEY ? '' : '<span class="sfx"> · devnet</span>')
+      : '<b>—</b>';
+    $('balpill').title = S.me ? S.wallet : '';
     $('balpill2').innerHTML = S.me ? 'Wallet <b>'+fmtSol(available())+'</b>' : '';
-    $('walletLbl').textContent = S.me ? (S.wallet ? shortCa(S.wallet) : 'Connected') : 'Connect Wallet';
-    $('heroCta').textContent = S.me ? 'Create a bet' : 'Connect Wallet';
+
+    $('heroCta').textContent = 'Create a bet';
     var b=$('banner');
     if(!conn){
       b.hidden=false;
@@ -2248,90 +2258,79 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   // The wallet address is the identity that matters: it is what the program
   // stores on every bet. Supabase sign-in runs alongside it and is only needed
   // for the admin-only trending list, so a failure there never blocks betting.
-  // ── a wallet the site makes for you ──────────────────────────────────────
-  // Most people who land here have no Solana extension, and being told to go
-  // and install one is where they leave. So the site can make a wallet in the
-  // browser instead: deposit into it, bet from it, withdraw out of it.
+  // ── the wallet that is already waiting for you ───────────────────────────
+  // There is no connect step and no extension. On the first visit the site
+  // makes a Solana wallet in this browser and that is your account: deposit
+  // into it, bet from it, withdraw out of it.
   //
-  // It is the player's wallet, not ours. The secret key is generated here,
-  // encrypted with a password they choose, and kept in this browser only. We
-  // never see it and never hold anyone's SOL — which is the whole reason it is
-  // done this way rather than with one shared pot and a balance in a table.
+  // It is still the player's wallet and not ours — the key is generated here
+  // and never leaves the browser, and no SOL of anyone's sits in a wallet we
+  // control. What is deliberately gone is the password and the write-this-
+  // down step, because that was the thing people would not do.
   //
-  // What that costs: lose the browser and the exported key, and the money is
-  // gone with nobody able to put it back. Creating one refuses to finish until
-  // the key has been shown and acknowledged, and the account menu shows it
-  // again whenever asked.
+  // Two consequences, and they are real:
   //
-  // The password is not a cure for a compromised page — once unlocked the key
-  // is in memory like any other wallet's. It protects the key at rest: a
-  // shared machine, a borrowed laptop, a copied profile folder.
-  var LW_KEY = 'ibet.wallet.v1';
+  //   The key is in localStorage in the clear. Anything that can run script
+  //   on this page can read it — a bug of ours, or one of the four CDN
+  //   scripts the page loads being tampered with. A password would have
+  //   encrypted it at rest; it does not protect a live page either way, but
+  //   it did raise the bar. It is gone at the owner's instruction.
+  //
+  //   Clearing site data deletes the wallet. The account menu can show and
+  //   copy the key at any time, and Withdraw is one tap from the header, so
+  //   the balance here is meant to be spending money rather than savings.
+  var LW_KEY = 'ibet.wallet.v2';
+  var LW_OLD = 'ibet.wallet.v1';
   var LW = { kp: null, pk: null };
 
   function lwStored(){
-    try{ var j = JSON.parse(localStorage.getItem(LW_KEY) || 'null'); return (j && j.pk && j.c) ? j : null; }
+    try{ var j = JSON.parse(localStorage.getItem(LW_KEY) || 'null'); return (j && j.pk && j.sk) ? j : null; }
     catch(_){ return null; }
   }
-  function lwExists(){ return !!lwStored(); }
   function lwUnlocked(){ return !!LW.kp; }
-  function lwAddress(){ var j = lwStored(); return j ? j.pk : null; }
+  function lwAddress(){ return LW.pk || (lwStored() || {}).pk || null; }
 
-  var b64 = {
-    enc: function(u8){ var s=''; for(var i=0;i<u8.length;i++) s+=String.fromCharCode(u8[i]); return btoa(s); },
-    dec: function(str){ var raw=atob(str), u8=new Uint8Array(raw.length); for(var i=0;i<raw.length;i++) u8[i]=raw.charCodeAt(i); return u8; }
-  };
-
-  /// 250k PBKDF2 rounds: slow enough that guessing a weak password costs real
-  /// time, fast enough that unlocking feels instant.
-  function lwKeyFrom(password, salt){
-    return crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey'])
-      .then(function(base){
-        return crypto.subtle.deriveKey(
-          { name:'PBKDF2', salt:salt, iterations:250000, hash:'SHA-256' },
-          base, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']);
-      });
-  }
-
-  function lwCreate(password){
-    if(!w3) return Promise.reject(new Error('Solana library did not load'));
-    var kp = w3.Keypair.generate();
-    var salt = crypto.getRandomValues(new Uint8Array(16));
-    var iv = crypto.getRandomValues(new Uint8Array(12));
-    return lwKeyFrom(password, salt).then(function(key){
-      return crypto.subtle.encrypt({ name:'AES-GCM', iv:iv }, key, kp.secretKey);
-    }).then(function(buf){
-      localStorage.setItem(LW_KEY, JSON.stringify({
-        pk: kp.publicKey.toString(), c: b64.enc(new Uint8Array(buf)),
-        iv: b64.enc(iv), s: b64.enc(salt)
-      }));
-      LW.kp = kp; LW.pk = kp.publicKey.toString();
-      return kp;
-    });
-  }
-
-  function lwUnlock(password){
+  /// Loads the wallet, making one the first time. Synchronous and silent:
+  /// this is the step the owner asked to disappear, so there is nothing here
+  /// to click through.
+  function lwEnsure(){
+    if(LW.kp) return LW.kp;
+    if(!w3) return null;
     var j = lwStored();
-    if(!j) return Promise.reject(new Error('No wallet in this browser'));
-    return lwKeyFrom(password, b64.dec(j.s)).then(function(key){
-      return crypto.subtle.decrypt({ name:'AES-GCM', iv:b64.dec(j.iv) }, key, b64.dec(j.c));
-    }).then(function(buf){
-      var kp = w3.Keypair.fromSecretKey(new Uint8Array(buf));
-      if(kp.publicKey.toString() !== j.pk) throw new Error('Stored wallet does not match its address');
-      LW.kp = kp; LW.pk = j.pk;
-      return kp;
-    }, function(){
-      // AES-GCM fails its authentication tag on a wrong password, and there is
-      // nothing more specific to tell anyone.
-      throw new Error('Wrong password');
-    });
+    if(j){
+      try{
+        var kp = w3.Keypair.fromSecretKey(bytesFromBase58(j.sk));
+        if(kp.publicKey.toString() === j.pk){ LW.kp = kp; LW.pk = j.pk; return kp; }
+      }catch(_){ /* unreadable: fall through and make a fresh one */ }
+    }
+    var fresh = w3.Keypair.generate();
+    try{
+      localStorage.setItem(LW_KEY, JSON.stringify({
+        pk: fresh.publicKey.toString(), sk: base58(fresh.secretKey)
+      }));
+    }catch(_){
+      // Private mode, or storage full. The wallet still works for this tab;
+      // it simply will not be here next time.
+    }
+    LW.kp = fresh; LW.pk = fresh.publicKey.toString();
+    return fresh;
   }
-
-  function lwLock(){ LW.kp = null; }
 
   function lwForget(){
     try{ localStorage.removeItem(LW_KEY); }catch(_){}
     LW.kp = null; LW.pk = null;
+  }
+
+  function bytesFromBase58(str){
+    var A='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz', bytes=[0];
+    for(var i=0;i<str.length;i++){
+      var v = A.indexOf(str[i]);
+      if(v < 0) throw new Error('not base58');
+      for(var j=0;j<bytes.length;j++){ v += bytes[j]*58; bytes[j]=v & 0xff; v >>= 8; }
+      while(v){ bytes.push(v & 0xff); v >>= 8; }
+    }
+    for(var k=0;k<str.length && str[k]==='1';k++) bytes.push(0);
+    return new Uint8Array(bytes.reverse());
   }
 
   /// base58 of the 64-byte secret key: what Phantom and Solflare accept when
@@ -2356,6 +2355,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   /// Shaped like an extension's provider, so sendTx and the Supabase sign-in
   /// work without knowing which kind of wallet they are talking to.
   function lwProvider(){
+    if(!LW.kp) lwEnsure();
     if(!LW.kp) return null;
     return {
       isLocal: true,
@@ -2367,10 +2367,20 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     };
   }
 
-  // The wallet made here wins while it is unlocked; an extension is still
-  // welcome for anyone who has one.
+  /// The browser wallet is the wallet. The extension path stays reachable
+  /// behind ?wallet=extension, which nobody will stumble into: it is there so
+  /// the owner can act as resolver from their own Phantom if the keeper ever
+  /// needs overruling, not as a choice to put in front of players.
+  var USE_EXTENSION = (function(){
+    try{ return new URLSearchParams(location.search).get('wallet') === 'extension'; }
+    catch(_){ return false; }
+  })();
+
   function walletProvider(){
-    return lwProvider() || (window.phantom && window.phantom.solana) || window.solflare || (window.solana || null);
+    if(USE_EXTENSION){
+      return (window.phantom && window.phantom.solana) || window.solflare || (window.solana || null);
+    }
+    return lwProvider();
   }
 
   function setWallet(address){
@@ -2383,22 +2393,17 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     if(S.me) loadBalance();
   }
 
-  /// The front door. A wallet already made here only needs unlocking; a fresh
-  /// visitor is offered one rather than sent away to install something.
+  /// There is no front door any more. Anything that needs a wallet gets the
+  /// one this browser already has, making it on the spot the first time.
   function connect(){
     if(!conn) return toast('Couldn’t load the Solana library. Reload and try again.');
-    if(lwUnlocked()) return connectWith(lwProvider());
-    if(lwExists()) return askUnlock();
-    if(!(window.phantom && window.phantom.solana) && !window.solflare && !window.solana) return askNewWallet();
-    return askWalletChoice();
-  }
-
-  function connectExtension(){
-    var prov = (window.phantom && window.phantom.solana) || window.solflare || window.solana;
+    var prov = walletProvider();
     if(!prov){
-      toast('No Solana wallet found. Install Phantom, or open i-bet.fun in the Phantom app.');
-      window.open('https://phantom.com/download','_blank','noopener');
-      return;
+      if(USE_EXTENSION){
+        toast('No Solana wallet found. Install Phantom, or drop ?wallet=extension from the URL.');
+        return;
+      }
+      return toast('Couldn’t make a wallet in this browser.');
     }
     connectWith(prov);
   }
@@ -2423,99 +2428,21 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
 
   // ── the wallet screens ───────────────────────────────────────────────────
 
-  function askWalletChoice(){
-    openModal('<h3 id="mTitle">How do you want to play?</h3>'+
-      '<p style="margin:0 0 16px;font-size:14px;color:var(--muted)">Either works. The site never holds your SOL in either case.</p>'+
-      '<div class="wchoose">'+
-        '<button type="button" class="wopt" id="optExt"><b>Use my wallet</b>'+
-          '<span>Phantom or Solflare, already in this browser.</span></button>'+
-        '<button type="button" class="wopt" id="optNew"><b>Make one here</b>'+
-          '<span>No extension. Deposit SOL into it and withdraw whenever you like.</span></button>'+
-      '</div>'+
-      '<div class="mact"><button class="wbtn ghost" data-close="1">Not now</button></div>',
-      function(){
-        $('optExt').onclick=function(){ closeModal(); connectExtension(); };
-        $('optNew').onclick=function(){ closeModal(); askNewWallet(); };
-      });
-  }
-
-  function askNewWallet(){
-    openModal('<h3 id="mTitle">Make a wallet</h3>'+
-      '<p style="margin:0 0 16px;font-size:14px;color:var(--muted)">It is made in this browser and belongs to you. '+
-      'Pick a password — it encrypts the key here and is never sent anywhere, so nobody can reset it for you.</p>'+
-      '<label class="flab" for="lwPw1">Password</label>'+
-      '<input class="fin" id="lwPw1" type="password" autocomplete="new-password" placeholder="At least 8 characters">'+
-      '<label class="flab" for="lwPw2">Again</label>'+
-      '<input class="fin" id="lwPw2" type="password" autocomplete="new-password" placeholder="Repeat it">'+
-      '<p class="fhint" id="lwErr"></p>'+
-      '<div class="mact"><button class="wbtn ghost" data-close="1">Cancel</button>'+
-      '<button class="wbtn" id="lwGo">Create wallet</button></div>',
-      function(){
-        var go=$('lwGo');
-        go.onclick=function(){
-          var a=$('lwPw1').value, b=$('lwPw2').value, err=$('lwErr');
-          if(a.length<8) return err.textContent='Use at least 8 characters.';
-          if(a!==b) return err.textContent='Those two do not match.';
-          err.textContent=''; go.disabled=true; go.textContent='Creating…';
-          lwCreate(a).then(function(){
-            showSecret(true);
-          }, function(e){
-            go.disabled=false; go.textContent='Create wallet';
-            err.textContent='Could not create it: '+String((e&&e.message)||e).slice(0,100);
-          });
-        };
-      });
-  }
-
-  /// Shown once on creation and on demand afterwards. On creation it will not
-  /// let go until the box is ticked: a key nobody wrote down is a balance
-  /// nobody can recover.
-  function showSecret(firstTime){
+  /// Not forced on anyone any more, but still here: this is the way to move
+  /// the wallet to another browser, or into Phantom, and the way out if
+  /// someone decides they would rather hold it properly.
+  function showSecret(){
     var key = lwExportKey();
-    if(!key) return toast('Unlock your wallet first.');
-    openModal('<h3 id="mTitle">'+(firstTime?'Save this key':'Your private key')+'</h3>'+
+    if(!key) return toast('No wallet in this browser yet.');
+    openModal('<h3 id="mTitle">Your private key</h3>'+
       '<p style="margin:0 0 14px;font-size:14px;color:var(--muted)">This is the only way back to this wallet if you lose '+
-      'this browser. Anyone who has it can spend the balance, so keep it like cash. You can paste it into Phantom to '+
-      'import the same wallet.</p>'+
+      'this browser or clear its data. Anyone who has it can spend the balance, so keep it like cash. Paste it into '+
+      'Phantom to open the same wallet there.</p>'+
       '<p class="sharelink" style="user-select:all">'+esc(key)+'</p>'+
-      (firstTime ? '<label class="termsrow2"><input type="checkbox" id="lwAck"><span>I have saved it somewhere safe.</span></label>' : '')+
       '<div class="mact">'+
         '<button class="wbtn ghost" data-copy="'+esc(key)+'" data-copy-label="Private key copied">Copy key</button>'+
-        '<button class="wbtn" id="lwDone"'+(firstTime?' disabled':'')+'>'+(firstTime?'Done':'Close')+'</button>'+
-      '</div>',
-      function(){
-        var ack=$('lwAck'), done=$('lwDone');
-        if(ack) ack.onchange=function(){ done.disabled=!ack.checked; };
-        done.onclick=function(){
-          closeModal();
-          if(firstTime) connectWith(lwProvider());
-        };
-      });
-  }
-
-  function askUnlock(){
-    openModal('<h3 id="mTitle">Unlock your wallet</h3>'+
-      '<p style="margin:0 0 14px;font-size:14px;color:var(--muted)">'+esc(shortCa(lwAddress()||''))+'</p>'+
-      '<label class="flab" for="lwPw">Password</label>'+
-      '<input class="fin" id="lwPw" type="password" autocomplete="current-password">'+
-      '<p class="fhint" id="lwErr2"></p>'+
-      '<div class="mact"><button class="wbtn ghost" data-close="1">Cancel</button>'+
-      '<button class="wbtn" id="lwOpen">Unlock</button></div>',
-      function(){
-        var go=$('lwOpen');
-        var run=function(){
-          go.disabled=true; go.textContent='Unlocking…';
-          lwUnlock($('lwPw').value).then(function(){
-            closeModal();
-            connectWith(lwProvider());
-          }, function(e){
-            go.disabled=false; go.textContent='Unlock';
-            $('lwErr2').textContent=String((e&&e.message)||e);
-          });
-        };
-        go.onclick=run;
-        $('lwPw').onkeydown=function(e){ if(e.key==='Enter') run(); };
-      });
+        '<button class="wbtn" data-close="1">Close</button>'+
+      '</div>');
   }
 
   function depositScreen(){
@@ -2535,7 +2462,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   }
 
   function withdrawScreen(){
-    if(!lwUnlocked()) return toast('Withdrawing is for the wallet made here. Your own wallet you control yourself.');
+    if(!lwUnlocked()) return toast('Withdrawing is for the wallet this site made. Your own wallet you move yourself.');
     var bal = available();
     // Leave enough for the signature; sweeping to exactly zero would fail.
     var most = Math.max(0, bal - 0.000005);
@@ -2653,18 +2580,15 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       function(){
         $('accDep').onclick=function(){ closeModal(); depositScreen(); };
         if($('accWd')) $('accWd').onclick=function(){ closeModal(); withdrawScreen(); };
-        if($('accKey')) $('accKey').onclick=function(){ showSecret(false); };
+        if($('accKey')) $('accKey').onclick=function(){ showSecret(); };
         $('signOut').onclick=function(){
           closeModal();
           var prov=walletProvider();
-          // Locking leaves the encrypted key in this browser; it is not a way
-          // to get rid of the wallet, and saying "Disconnect" would imply it.
           if(prov && !prov.isLocal && typeof prov.disconnect==='function'){ try{ prov.disconnect(); }catch(_){} }
-          lwLock();
           if(sb) sb.auth.signOut().catch(function(){});
           S.uid=null; S.owner=false;
           setWallet(null);
-          toast(local ? 'Locked. Your wallet stays in this browser.' : 'Disconnected.');
+          toast('Disconnected.');
         };
       });
   }
@@ -2861,7 +2785,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       var inLimits = !CFG || (st3>=minStake()-1e-9 && st3<=maxStake()+1e-9);
       var ok3 = step1ok() && step2ok() && inLimits && (!S.me || st3<=available()+1e-9);
       $('wCreate').classList.toggle('ready', ok3); $('wCreate').disabled=!ok3;
-      $('wCreate').innerHTML = S.me ? 'Create Bet '+ARROW_R : 'Connect Wallet '+ARROW_R;
+      $('wCreate').innerHTML = 'Create Bet '+ARROW_R;
       $('wHint3').textContent = !S.me ? 'Connect your wallet to stake this bet.'
         : (!inLimits ? 'Stake has to be between '+fmtSol(minStake())+' and '+fmtSol(maxStake())+'.'
         : (st3>available()+1e-9 ? 'Not enough '+solWord()+' — you have '+fmtSol(available())+'.'
@@ -3131,7 +3055,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     }
     var ch=e.target.closest('[data-chart]');
     if(ch){ openChart(ch.getAttribute('data-chart'), find(ch.getAttribute('data-bet'))); return; }
-    var wb=e.target.closest('[data-wallet]'); if(wb){ connectWallet(wb.id==='walletBtn'?'nav':'hero'); return; }
+    var wb=e.target.closest('[data-wallet]'); if(wb){ connectWallet(wb.id==='balpill'?'nav':'hero'); return; }
     var t=e.target.closest('[data-close],[data-go],[data-tab],[data-act]');
     if(!t) return;
     if(t.dataset.close){ if(t===e.target || t.tagName==='BUTTON') closeModal(); return; }
@@ -3144,6 +3068,8 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     else if(a==='refund') refund(id);
     else if(a==='share') shareBet(id);
   });
+  $('depBtn').onclick=function(){ depositScreen(); };
+  $('wdBtn').onclick=function(){ withdrawScreen(); };
   $('coinFilter').onchange=function(){ S.coin=this.value; renderTabs(); renderList(); };
   setInterval(function(){ if(S.bets.some(function(b){return b.status==='matched';})) renderList(); },15000);
 
@@ -3166,9 +3092,13 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       loadBets();
     });
 
-    // Reconnect silently when the user has already trusted this site.
+    // The wallet is simply there from the first paint — made on this visit if
+    // this browser has never been here. No button, because the owner's point
+    // was that the button is where people leave.
     var prov=walletProvider();
-    if(prov){
+    if(prov && prov.isLocal){
+      setWallet(prov.publicKey.toString());
+    } else if(prov){
       if(typeof prov.on==='function'){
         prov.on('accountChanged', function(pk){
           S.uid=null; S.owner=false;
