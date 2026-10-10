@@ -209,6 +209,35 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
   background:var(--bg);color:var(--text2);font-size:13px;word-break:break-all;line-height:1.5}
 /* Brief ring on the bet someone arrived here to see. */
 .row.shared{outline:2px solid var(--flame);outline-offset:2px;transition:outline-color .5s ease}
+
+/* ── what a bet means, under the row that summarises it ──────────────────
+   The row keeps its fixed height; the panel takes a second grid row so the
+   numbers above it stay lined up with every other row in the list. */
+.row.open{height:auto;grid-template-rows:104px auto}
+.rowx{display:flex;align-items:center;justify-content:center;width:36px;height:36px;flex:none;
+  border:1px solid var(--row-line);border-radius:10px;background:transparent;color:var(--muted);
+  cursor:pointer;transition:color .15s ease,border-color .15s ease,transform .2s ease}
+.rowx:hover{color:var(--text);border-color:var(--muted)}
+.rowx:focus-visible{outline:2px solid var(--flame);outline-offset:2px}
+.rowx.on{transform:rotate(180deg);color:var(--text)}
+.rowp-wrap{grid-column:1/-1}
+.rowp{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) auto;gap:28px;align-items:center;
+  padding:18px 2px 4px;border-top:1px solid var(--row-line);margin-top:2px}
+.rowp-head{margin:0;font-size:15.5px;line-height:1.5;color:var(--text2)}
+.rowp-head b{color:var(--text)}
+.rowp-rule{margin:7px 0 0;font-size:13.5px;line-height:1.6;color:var(--muted)}
+.rowp-when{display:flex;align-items:center;gap:9px;margin:11px 0 0;font-size:13.5px;color:var(--muted)}
+.rowp-when svg{width:17px;height:17px;flex:none}
+.rowp-nums{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;margin:0}
+.rowp-nums>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.rowp-nums dt{font-size:12.5px;color:var(--muted)}
+.rowp-nums dd{margin:0;font-size:16px;font-weight:600;color:var(--text2)}
+.rowp-nums .win dd{color:var(--text)}
+.rowp-act{display:flex;justify-content:flex-end}
+@media (max-width:860px){
+  .rowp{grid-template-columns:1fr;gap:18px}
+  .rowp-act .wbtn{width:100%}
+}
 .bxhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
 .bxhead>label{flex:0 1 auto}
 /* Read off the on-chain config, so raising the cap through the multisig shows
@@ -1429,6 +1458,62 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   function coinColor(ca){ var h=0; for(var i=0;i<ca.length;i++) h=(h*31+ca.charCodeAt(i))>>>0; return 'hsl('+(h%360)+' 62% 66%)'; }
   function shortCa(ca){ return ca.slice(0,4)+'…'+ca.slice(-4); }
   function label(b){ var t = tickerFor(b.ca); return t ? t.toUpperCase() : shortCa(b.ca); }
+
+  // ── what a bet actually says ─────────────────────────────────────────────
+  // The row shows numbers; this says what they mean for whoever is reading,
+  // in the one sentence that decides whether they win. Touch-to-win is the
+  // part people get wrong, so it is stated twice: once as the condition, once
+  // as the thing that can end the bet early.
+  function betTerms(b){
+    var name = esc(label(b)), cap = fmtCap(b.target);
+    var verb = b.dir==='above' ? 'reaches' : 'falls to';
+    var mine = b.creator===S.me, theirs = b.taker===S.me;
+    var sp = split(b.stake);
+
+    var head, rule, timing;
+    if(b.status==='open' && mine){
+      head = 'You win if '+name+' <b>'+verb+' '+cap+'</b> at any moment before the deadline.';
+      rule = 'Paid the moment it happens — that can be minutes in, not only at the end.';
+      timing = 'Nobody has taken this yet. The '+fmtDur(b.durSecs)+' starts the moment someone does.';
+    } else if(b.status==='open'){
+      head = 'You win if '+name+' <b>never '+verb+' '+cap+'</b> before the deadline.';
+      rule = 'The creator wins the instant it touches that market cap — even for one minute, even if it falls straight back.';
+      timing = 'The '+fmtDur(b.durSecs)+' starts the moment you take it, not now.';
+    } else {
+      var who = mine ? 'You win' : (theirs ? 'The creator wins' : 'The creator wins');
+      head = (mine||theirs)
+        ? (mine ? 'You win if '+name+' <b>'+verb+' '+cap+'</b> before the deadline.'
+                : 'You win if '+name+' <b>never '+verb+' '+cap+'</b> before the deadline.')
+        : who+' if '+name+' <b>'+verb+' '+cap+'</b> before the deadline; otherwise the taker does.';
+      rule = 'Settled automatically from 1-minute candles. A single touch decides it, and there is no dispute or appeal.';
+      timing = b.status==='matched'
+        ? 'Deadline '+fmtWhen(b.expiresAt)+'.'
+        : 'Settled '+(b.settledAt ? fmtWhen(b.settledAt) : '');
+    }
+
+    var act = '';
+    if(b.status==='open'){
+      var busy = !!S.busy[b.id];
+      act = mine
+        ? '<button class="wbtn ghost" data-act="cancel" data-id="'+esc(b.id)+'"'+(busy?' disabled':'')+'>'+(busy?'Cancelling…':'Cancel bet')+'</button>'
+        : '<button class="wbtn" data-act="take" data-id="'+esc(b.id)+'"'+(busy?' disabled':'')+'>'+(busy?'Taking…':'Accept bet · '+fmtSol(b.stake))+'</button>';
+    }
+
+    return '<div class="rowp">'+
+      '<div class="rowp-say">'+
+        '<p class="rowp-head">'+head+'</p>'+
+        '<p class="rowp-rule">'+esc(rule)+'</p>'+
+        '<p class="rowp-when">'+IC.clock+'<span>'+esc(timing)+'</span></p>'+
+      '</div>'+
+      '<dl class="rowp-nums">'+
+        '<div><dt>'+(b.status==='open' && !mine ? 'Your stake' : 'Stake each')+'</dt><dd>'+fmtSol(b.stake)+'</dd></div>'+
+        '<div><dt>Total pot</dt><dd>'+fmtSol(sp.pot)+'</dd></div>'+
+        '<div><dt>Fee ('+(feeBps()/100)+'%)</dt><dd>'+fmtSol(sp.fee)+'</dd></div>'+
+        '<div class="win"><dt>Winner gets</dt><dd>'+fmtSol(sp.win)+'</dd></div>'+
+      '</dl>'+
+      (act ? '<div class="rowp-act">'+act+'</div>' : '')+
+    '</div>';
+  }
   var LOGOS = {
     'GTBxUiw6wJdmmkCGZgRHLyYxqu1vG4KtRpeox6yDpump':'/logos/jeanphil.jpg',
     'A13oRB9FFaiUjfi6LdCg6p9ka1u8SfGkUFs4SKvPpump':'/logos/toad.jpg',
@@ -1448,7 +1533,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
 
   // me = the connected wallet address (identities are wallets now, not rows);
   // uid = the Supabase user id, only used for the admin-only trending list.
-  var S = { bets:[], me:null, uid:null, owner:false, canResolve:false, bal:0, names:{},
+  var S = { bets:[], me:null, uid:null, owner:false, canResolve:false, bal:0, names:{}, open:{},
             tab:'open', view:'bet', coin:'', dir:'above', mode:'loading', busy:{}, wallet:null };
   var $ = function(id){ return document.getElementById(id); };
 
@@ -1537,6 +1622,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     user:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 20c.8-3.6 3.9-5.5 7.5-5.5s6.7 1.9 7.5 5.5"/></svg>',
     check:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.2l2.4 2.4 4.6-4.9"/></svg>',
     clock:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" style="color:var(--text2)"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    chev:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>',
     ext:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg>'
   };
   function arrow(dir){
@@ -1605,19 +1691,26 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
         else if(mineC||mineT) act='<span class="pill lose">Lost</span>';
         else act='<span class="pill win">'+esc(nameOf(b.winner))+' won</span>';
       }
-      var side = b.dir==='above' ? 'Market cap' : 'Market cap';
+      var open = !!S.open[b.id];
       var live = b.status==='settled' ? null : ensureLive(b.ca);
       var extra = b.status==='settled'
         ? '<span class="evid">'+esc(evidenceLine(b))+'</span>'
         : (live ? '<span class="nowcap">now <b>'+fmtCap(live)+'</b></span>' : '');
-      return '<article class="row" data-id="'+esc(b.id)+'" aria-label="'+esc(label(b)+(b.dir==='above'?' above ':' below ')+fmtCap(b.target)+' market cap')+'">'+
+      return '<article class="row'+(open?' open':'')+'" data-id="'+esc(b.id)+'" aria-label="'+esc(label(b)+(b.dir==='above'?' above ':' below ')+fmtCap(b.target)+' market cap')+'">'+
         '<div class="cell"><button type="button" class="coinbtn" data-chart="'+esc(b.ca)+'" data-bet="'+esc(b.id)+'" aria-label="Open the chart for '+esc(label(b))+'">'+coinAva(b.ca, badge(b))+'</button><div class="stack"><span class="t"><button type="button" class="coinbtn" data-chart="'+esc(b.ca)+'" data-bet="'+esc(b.id)+'">'+esc(label(b))+'</button></span><span class="s ca"><button type="button" class="cabtn" data-copy="'+esc(b.ca)+'" aria-label="Copy contract address">'+esc(shortCa(b.ca))+'</button><a href="https://dexscreener.com/solana/'+esc(b.ca)+'" target="_blank" rel="noopener noreferrer" aria-label="Open chart on DexScreener">'+IC.ext+'</a>'+
         '<a class="exlink" href="'+esc(explorer('address',b.pda))+'" target="_blank" rel="noopener noreferrer" aria-label="View this bet\u2019s escrow account on Solana Explorer">escrow '+IC.ext+'</a></span></div></div>'+
         '<div class="cell" style="gap:14px">'+arrow(b.dir)+'<div class="stack" style="gap:2px"><span class="t big">'+fmtCap(b.target)+'</span><span class="s sm">'+(b.dir==='above'?'Higher':'Lower')+(isFinite(b.startMc)&&b.startMc>0?' · from '+fmtCap(b.startMc):' market cap')+'</span>'+extra+'</div></div>'+
         '<div class="cell time" style="gap:16px">'+IC.clock+'<span class="days">'+esc(when)+'</span></div>'+
         '<div class="vs" aria-hidden="true"><i></i><span>VS</span><i></i></div>'+
         '<div class="cell who">'+who+'</div>'+
-        '<div class="act">'+act+'</div>'+
+        // Open, the panel carries the action with the stake spelled out, so
+        // the row's own button would be the same thing said twice.
+        '<div class="act">'+(open?'':act)+
+          '<button type="button" class="rowx'+(open?' on':'')+'" data-x="'+esc(b.id)+'" '+
+            'aria-expanded="'+(open?'true':'false')+'" aria-controls="p_'+esc(b.id)+'" '+
+            'aria-label="'+(open?'Hide':'Show')+' what this bet means">'+IC.chev+'</button>'+
+        '</div>'+
+        '<div class="rowp-wrap" id="p_'+esc(b.id)+'"'+(open?'':' hidden')+'>'+(open?betTerms(b):'')+'</div>'+
       '</article>';
     }).join('');
   }
@@ -2368,6 +2461,13 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       var ok=function(){ toast(cp.getAttribute('data-copy-label') || 'CA copied'); };
       var fb=function(){ var ta=document.createElement('textarea'); ta.value=v; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); ok(); }catch(_){ toast(v); } ta.remove(); };
       try{ navigator.clipboard.writeText(v).then(ok,fb); }catch(_){ fb(); }
+      return;
+    }
+    var xb=e.target.closest('[data-x]');
+    if(xb){
+      var xid=xb.getAttribute('data-x');
+      if(S.open[xid]) delete S.open[xid]; else S.open[xid]=true;
+      renderList();
       return;
     }
     var ch=e.target.closest('[data-chart]');
