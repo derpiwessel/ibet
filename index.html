@@ -210,6 +210,30 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .sharecard-wait{padding:42px 0;text-align:center;font-size:13.5px;color:var(--muted)}
 .sharelink{margin:0 0 18px;padding:11px 13px;border:1px solid var(--row-line);border-radius:10px;
   background:var(--bg);color:var(--text2);font-size:13px;word-break:break-all;line-height:1.5}
+
+/* ── the wallet screens ────────────────────────────────────────────────── */
+.wchoose{display:grid;gap:10px;margin:0 0 18px}
+.wopt{display:flex;flex-direction:column;gap:4px;text-align:left;padding:15px 16px;border-radius:12px;
+  border:1px solid var(--row-line);background:transparent;color:var(--text);font:inherit;cursor:pointer;
+  transition:border-color .15s ease,background .15s ease}
+.wopt:hover{border-color:var(--muted);background:var(--row)}
+.wopt:focus-visible{outline:2px solid var(--flame);outline-offset:2px}
+.wopt b{font-size:15.5px}
+.wopt span{font-size:13.5px;color:var(--muted);line-height:1.5}
+.flab{display:block;margin:0 0 6px;font-size:13px;color:var(--muted)}
+.fin{width:100%;margin:0 0 14px;padding:11px 13px;border:1px solid var(--row-line);border-radius:10px;
+  background:var(--bg);color:var(--text);font:inherit;font-size:15px;outline:none}
+.fin:focus{border-color:var(--muted)}
+.fhint{margin:-6px 0 16px;font-size:13px;color:var(--muted);min-height:18px}
+.linkish{background:none;border:none;padding:0;font:inherit;font-size:13px;color:var(--text2);
+  text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.linkish:hover{color:var(--text)}
+.wrow{display:flex;gap:10px;margin:0 0 14px}
+.wrow .wbtn{flex:1}
+.termsrow2{display:flex;gap:10px;align-items:flex-start;margin:0 0 18px;font-size:14px;color:var(--text2)}
+.termsrow2 input{margin-top:3px;width:18px;height:18px;accent-color:var(--green)}
+.qrbox{display:flex;justify-content:center;margin:0 0 14px}
+.qrbox canvas{border-radius:10px;display:block}
 /* Brief ring on the bet someone arrived here to see. */
 .row.shared{outline:2px solid var(--flame);outline-offset:2px;transition:outline-color .5s ease}
 
@@ -661,7 +685,10 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       CFG = { admin:r.key(), resolver:r.key(), feeWallet:r.key(), feeBps:r.u16(),
               minStake:r.u64(), maxStake:r.u64(), graceSecs:r.i64(), paused:r.bool() };
       r.u8();  // bump
-      if(len === CONFIG_SIZE_V2){
+      // Which program this is, not just which fields it has: the two take
+      // different accounts on cancel_bet.
+      CFG.v2 = len === CONFIG_SIZE_V2;
+      if(CFG.v2){
         CFG.openExposure = r.u64();
         CFG.maxOpenExposure = r.u64();
       }
@@ -713,7 +740,14 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     return ix([[taker,1,1],[configPda(),0,1],[pda,0,1],[SYS,0,0]], new Buf().disc(IX.takeBet).out());
   }
   function ixCancelBet(creator, pda){
-    return ix([[creator,1,1],[configPda(),0,1],[pda,0,1]], new Buf().disc(IX.cancelBet).out());
+    var keys = [[creator,1,1],[configPda(),0,1],[pda,0,1]];
+    // Cancel is the one instruction whose account list changed between the
+    // two deployments: phase 3 updates the exposure counter here, phase 2 had
+    // no counter and takes no config. Devnet still runs phase 2, and sending
+    // it one more account than it declares fails with Anchor's 3002,
+    // "instruction did not deserialize" — which is exactly how this was found.
+    if(CFG && !CFG.v2) keys.splice(1, 1);
+    return ix(keys, new Buf().disc(IX.cancelBet).out());
   }
   function ixSettleBet(resolver, b, outcome, observedMc, observedAtMs){
     var data = new Buf().disc(IX.settleBet)
@@ -1783,7 +1817,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
 
   function renderTop(){
     renderNetbar();
-    var bal = S.me ? '<b>'+fmtSol(available())+'</b>' + (LIVE_MONEY ? '' : ' devnet SOL') : '';
+    var bal = S.me ? '<b>'+fmtSol(available())+'</b>' + (LIVE_MONEY ? '' : ' · devnet') : '';
     $('balpill').innerHTML=bal;
     $('balpill2').innerHTML = S.me ? 'Wallet <b>'+fmtSol(available())+'</b>' : '';
     $('walletLbl').textContent = S.me ? (S.wallet ? shortCa(S.wallet) : 'Connected') : 'Connect Wallet';
@@ -2214,7 +2248,130 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   // The wallet address is the identity that matters: it is what the program
   // stores on every bet. Supabase sign-in runs alongside it and is only needed
   // for the admin-only trending list, so a failure there never blocks betting.
-  function walletProvider(){ return (window.phantom && window.phantom.solana) || window.solflare || (window.solana || null); }
+  // ── a wallet the site makes for you ──────────────────────────────────────
+  // Most people who land here have no Solana extension, and being told to go
+  // and install one is where they leave. So the site can make a wallet in the
+  // browser instead: deposit into it, bet from it, withdraw out of it.
+  //
+  // It is the player's wallet, not ours. The secret key is generated here,
+  // encrypted with a password they choose, and kept in this browser only. We
+  // never see it and never hold anyone's SOL — which is the whole reason it is
+  // done this way rather than with one shared pot and a balance in a table.
+  //
+  // What that costs: lose the browser and the exported key, and the money is
+  // gone with nobody able to put it back. Creating one refuses to finish until
+  // the key has been shown and acknowledged, and the account menu shows it
+  // again whenever asked.
+  //
+  // The password is not a cure for a compromised page — once unlocked the key
+  // is in memory like any other wallet's. It protects the key at rest: a
+  // shared machine, a borrowed laptop, a copied profile folder.
+  var LW_KEY = 'ibet.wallet.v1';
+  var LW = { kp: null, pk: null };
+
+  function lwStored(){
+    try{ var j = JSON.parse(localStorage.getItem(LW_KEY) || 'null'); return (j && j.pk && j.c) ? j : null; }
+    catch(_){ return null; }
+  }
+  function lwExists(){ return !!lwStored(); }
+  function lwUnlocked(){ return !!LW.kp; }
+  function lwAddress(){ var j = lwStored(); return j ? j.pk : null; }
+
+  var b64 = {
+    enc: function(u8){ var s=''; for(var i=0;i<u8.length;i++) s+=String.fromCharCode(u8[i]); return btoa(s); },
+    dec: function(str){ var raw=atob(str), u8=new Uint8Array(raw.length); for(var i=0;i<raw.length;i++) u8[i]=raw.charCodeAt(i); return u8; }
+  };
+
+  /// 250k PBKDF2 rounds: slow enough that guessing a weak password costs real
+  /// time, fast enough that unlocking feels instant.
+  function lwKeyFrom(password, salt){
+    return crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey'])
+      .then(function(base){
+        return crypto.subtle.deriveKey(
+          { name:'PBKDF2', salt:salt, iterations:250000, hash:'SHA-256' },
+          base, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']);
+      });
+  }
+
+  function lwCreate(password){
+    if(!w3) return Promise.reject(new Error('Solana library did not load'));
+    var kp = w3.Keypair.generate();
+    var salt = crypto.getRandomValues(new Uint8Array(16));
+    var iv = crypto.getRandomValues(new Uint8Array(12));
+    return lwKeyFrom(password, salt).then(function(key){
+      return crypto.subtle.encrypt({ name:'AES-GCM', iv:iv }, key, kp.secretKey);
+    }).then(function(buf){
+      localStorage.setItem(LW_KEY, JSON.stringify({
+        pk: kp.publicKey.toString(), c: b64.enc(new Uint8Array(buf)),
+        iv: b64.enc(iv), s: b64.enc(salt)
+      }));
+      LW.kp = kp; LW.pk = kp.publicKey.toString();
+      return kp;
+    });
+  }
+
+  function lwUnlock(password){
+    var j = lwStored();
+    if(!j) return Promise.reject(new Error('No wallet in this browser'));
+    return lwKeyFrom(password, b64.dec(j.s)).then(function(key){
+      return crypto.subtle.decrypt({ name:'AES-GCM', iv:b64.dec(j.iv) }, key, b64.dec(j.c));
+    }).then(function(buf){
+      var kp = w3.Keypair.fromSecretKey(new Uint8Array(buf));
+      if(kp.publicKey.toString() !== j.pk) throw new Error('Stored wallet does not match its address');
+      LW.kp = kp; LW.pk = j.pk;
+      return kp;
+    }, function(){
+      // AES-GCM fails its authentication tag on a wrong password, and there is
+      // nothing more specific to tell anyone.
+      throw new Error('Wrong password');
+    });
+  }
+
+  function lwLock(){ LW.kp = null; }
+
+  function lwForget(){
+    try{ localStorage.removeItem(LW_KEY); }catch(_){}
+    LW.kp = null; LW.pk = null;
+  }
+
+  /// base58 of the 64-byte secret key: what Phantom and Solflare accept when
+  /// importing an existing wallet, so nobody's money is trapped in this site.
+  function lwExportKey(){ return LW.kp ? base58(LW.kp.secretKey) : null; }
+
+  /// web3.js keeps its base58 encoder private and this runs once, by hand, so
+  /// the plain algorithm is cheaper than another dependency.
+  function base58(bytes){
+    var A='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz', digits=[0];
+    for(var i=0;i<bytes.length;i++){
+      var carry=bytes[i];
+      for(var j=0;j<digits.length;j++){ carry += digits[j]<<8; digits[j]=carry%58; carry=(carry/58)|0; }
+      while(carry){ digits.push(carry%58); carry=(carry/58)|0; }
+    }
+    var out='';
+    for(var k=0;k<bytes.length && bytes[k]===0;k++) out+='1';
+    for(var m=digits.length-1;m>=0;m--) out+=A[digits[m]];
+    return out;
+  }
+
+  /// Shaped like an extension's provider, so sendTx and the Supabase sign-in
+  /// work without knowing which kind of wallet they are talking to.
+  function lwProvider(){
+    if(!LW.kp) return null;
+    return {
+      isLocal: true,
+      isConnected: true,
+      publicKey: LW.kp.publicKey,
+      connect: function(){ return Promise.resolve({ publicKey: LW.kp.publicKey }); },
+      signTransaction: function(tx){ tx.sign(LW.kp); return Promise.resolve(tx); },
+      signAllTransactions: function(txs){ txs.forEach(function(t){ t.sign(LW.kp); }); return Promise.resolve(txs); }
+    };
+  }
+
+  // The wallet made here wins while it is unlocked; an extension is still
+  // welcome for anyone who has one.
+  function walletProvider(){
+    return lwProvider() || (window.phantom && window.phantom.solana) || window.solflare || (window.solana || null);
+  }
 
   function setWallet(address){
     S.me = address || null;
@@ -2226,20 +2383,34 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     if(S.me) loadBalance();
   }
 
+  /// The front door. A wallet already made here only needs unlocking; a fresh
+  /// visitor is offered one rather than sent away to install something.
   function connect(){
-    var prov=walletProvider();
+    if(!conn) return toast('Couldn’t load the Solana library. Reload and try again.');
+    if(lwUnlocked()) return connectWith(lwProvider());
+    if(lwExists()) return askUnlock();
+    if(!(window.phantom && window.phantom.solana) && !window.solflare && !window.solana) return askNewWallet();
+    return askWalletChoice();
+  }
+
+  function connectExtension(){
+    var prov = (window.phantom && window.phantom.solana) || window.solflare || window.solana;
     if(!prov){
       toast('No Solana wallet found. Install Phantom, or open i-bet.fun in the Phantom app.');
       window.open('https://phantom.com/download','_blank','noopener');
       return;
     }
+    connectWith(prov);
+  }
+
+  function connectWith(prov){
     if(!conn) return toast('Couldn’t load the Solana library. Reload and try again.');
     var already = prov.isConnected && prov.publicKey;
     Promise.resolve(already ? { publicKey: prov.publicKey } : prov.connect()).then(function(r){
       var pk = (r && r.publicKey) || prov.publicKey;
       if(!pk) throw new Error('Wallet did not return an address');
       setWallet(pk.toString());
-      toast(LIVE_MONEY ? 'Wallet connected.' : 'Wallet connected — devnet.');
+      toast(prov.isLocal ? 'Wallet ready.' : (LIVE_MONEY ? 'Wallet connected.' : 'Wallet connected — devnet.'));
       supabaseSignIn(prov);
       return loadBets();
     }).catch(function(e){
@@ -2248,6 +2419,198 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       if(/reject|cancel|denied|declined/i.test(m)) toast('Connection cancelled.');
       else toast('Couldn’t connect: '+m.slice(0,120));
     });
+  }
+
+  // ── the wallet screens ───────────────────────────────────────────────────
+
+  function askWalletChoice(){
+    openModal('<h3 id="mTitle">How do you want to play?</h3>'+
+      '<p style="margin:0 0 16px;font-size:14px;color:var(--muted)">Either works. The site never holds your SOL in either case.</p>'+
+      '<div class="wchoose">'+
+        '<button type="button" class="wopt" id="optExt"><b>Use my wallet</b>'+
+          '<span>Phantom or Solflare, already in this browser.</span></button>'+
+        '<button type="button" class="wopt" id="optNew"><b>Make one here</b>'+
+          '<span>No extension. Deposit SOL into it and withdraw whenever you like.</span></button>'+
+      '</div>'+
+      '<div class="mact"><button class="wbtn ghost" data-close="1">Not now</button></div>',
+      function(){
+        $('optExt').onclick=function(){ closeModal(); connectExtension(); };
+        $('optNew').onclick=function(){ closeModal(); askNewWallet(); };
+      });
+  }
+
+  function askNewWallet(){
+    openModal('<h3 id="mTitle">Make a wallet</h3>'+
+      '<p style="margin:0 0 16px;font-size:14px;color:var(--muted)">It is made in this browser and belongs to you. '+
+      'Pick a password — it encrypts the key here and is never sent anywhere, so nobody can reset it for you.</p>'+
+      '<label class="flab" for="lwPw1">Password</label>'+
+      '<input class="fin" id="lwPw1" type="password" autocomplete="new-password" placeholder="At least 8 characters">'+
+      '<label class="flab" for="lwPw2">Again</label>'+
+      '<input class="fin" id="lwPw2" type="password" autocomplete="new-password" placeholder="Repeat it">'+
+      '<p class="fhint" id="lwErr"></p>'+
+      '<div class="mact"><button class="wbtn ghost" data-close="1">Cancel</button>'+
+      '<button class="wbtn" id="lwGo">Create wallet</button></div>',
+      function(){
+        var go=$('lwGo');
+        go.onclick=function(){
+          var a=$('lwPw1').value, b=$('lwPw2').value, err=$('lwErr');
+          if(a.length<8) return err.textContent='Use at least 8 characters.';
+          if(a!==b) return err.textContent='Those two do not match.';
+          err.textContent=''; go.disabled=true; go.textContent='Creating…';
+          lwCreate(a).then(function(){
+            showSecret(true);
+          }, function(e){
+            go.disabled=false; go.textContent='Create wallet';
+            err.textContent='Could not create it: '+String((e&&e.message)||e).slice(0,100);
+          });
+        };
+      });
+  }
+
+  /// Shown once on creation and on demand afterwards. On creation it will not
+  /// let go until the box is ticked: a key nobody wrote down is a balance
+  /// nobody can recover.
+  function showSecret(firstTime){
+    var key = lwExportKey();
+    if(!key) return toast('Unlock your wallet first.');
+    openModal('<h3 id="mTitle">'+(firstTime?'Save this key':'Your private key')+'</h3>'+
+      '<p style="margin:0 0 14px;font-size:14px;color:var(--muted)">This is the only way back to this wallet if you lose '+
+      'this browser. Anyone who has it can spend the balance, so keep it like cash. You can paste it into Phantom to '+
+      'import the same wallet.</p>'+
+      '<p class="sharelink" style="user-select:all">'+esc(key)+'</p>'+
+      (firstTime ? '<label class="termsrow2"><input type="checkbox" id="lwAck"><span>I have saved it somewhere safe.</span></label>' : '')+
+      '<div class="mact">'+
+        '<button class="wbtn ghost" data-copy="'+esc(key)+'" data-copy-label="Private key copied">Copy key</button>'+
+        '<button class="wbtn" id="lwDone"'+(firstTime?' disabled':'')+'>'+(firstTime?'Done':'Close')+'</button>'+
+      '</div>',
+      function(){
+        var ack=$('lwAck'), done=$('lwDone');
+        if(ack) ack.onchange=function(){ done.disabled=!ack.checked; };
+        done.onclick=function(){
+          closeModal();
+          if(firstTime) connectWith(lwProvider());
+        };
+      });
+  }
+
+  function askUnlock(){
+    openModal('<h3 id="mTitle">Unlock your wallet</h3>'+
+      '<p style="margin:0 0 14px;font-size:14px;color:var(--muted)">'+esc(shortCa(lwAddress()||''))+'</p>'+
+      '<label class="flab" for="lwPw">Password</label>'+
+      '<input class="fin" id="lwPw" type="password" autocomplete="current-password">'+
+      '<p class="fhint" id="lwErr2"></p>'+
+      '<div class="mact"><button class="wbtn ghost" data-close="1">Cancel</button>'+
+      '<button class="wbtn" id="lwOpen">Unlock</button></div>',
+      function(){
+        var go=$('lwOpen');
+        var run=function(){
+          go.disabled=true; go.textContent='Unlocking…';
+          lwUnlock($('lwPw').value).then(function(){
+            closeModal();
+            connectWith(lwProvider());
+          }, function(e){
+            go.disabled=false; go.textContent='Unlock';
+            $('lwErr2').textContent=String((e&&e.message)||e);
+          });
+        };
+        go.onclick=run;
+        $('lwPw').onkeydown=function(e){ if(e.key==='Enter') run(); };
+      });
+  }
+
+  function depositScreen(){
+    var addr = S.me;
+    if(!addr) return connect();
+    openModal('<h3 id="mTitle">Deposit SOL</h3>'+
+      '<p style="margin:0 0 14px;font-size:14px;color:var(--muted)">Send SOL to this address from any wallet or exchange. '+
+      'It arrives in about a second and shows up here as your balance.</p>'+
+      '<div class="qrbox" id="qrBox"></div>'+
+      '<p class="sharelink" style="user-select:all">'+esc(addr)+'</p>'+
+      '<p class="fhint">Solana only. Sending any other network’s coins to this address loses them.</p>'+
+      '<div class="mact"><button class="wbtn ghost" data-close="1">Done</button>'+
+      '<button class="wbtn" data-copy="'+esc(addr)+'" data-copy-label="Address copied">Copy address</button></div>',
+      // The bare address, not a solana: URI — every scanner reads the first
+      // and only some read the second.
+      function(){ drawQr($('qrBox'), addr); });
+  }
+
+  function withdrawScreen(){
+    if(!lwUnlocked()) return toast('Withdrawing is for the wallet made here. Your own wallet you control yourself.');
+    var bal = available();
+    // Leave enough for the signature; sweeping to exactly zero would fail.
+    var most = Math.max(0, bal - 0.000005);
+    openModal('<h3 id="mTitle">Withdraw SOL</h3>'+
+      '<p style="margin:0 0 14px;font-size:14px;color:var(--muted)">Send SOL out of this wallet to any Solana address. '+
+      'Balance '+fmtSol(bal)+'.</p>'+
+      '<label class="flab" for="wdTo">To address</label>'+
+      '<input class="fin" id="wdTo" autocomplete="off" spellcheck="false" placeholder="Solana address">'+
+      '<label class="flab" for="wdAmt">Amount</label>'+
+      '<input class="fin" id="wdAmt" inputmode="decimal" autocomplete="off" placeholder="0.0">'+
+      '<p class="fhint" id="wdErr"><button type="button" class="linkish" id="wdMax">Send everything ('+fmtSol(most)+')</button></p>'+
+      '<div class="mact"><button class="wbtn ghost" data-close="1">Cancel</button>'+
+      '<button class="wbtn" id="wdGo">Withdraw</button></div>',
+      function(){
+        $('wdMax').onclick=function(){ $('wdAmt').value=String(most); };
+        $('wdGo').onclick=function(){
+          var err=$('wdErr'), to=$('wdTo').value.trim(), amt=parseFloat($('wdAmt').value);
+          var dest;
+          try{ dest = new w3.PublicKey(to); }catch(_){ return err.textContent='That is not a Solana address.'; }
+          if(!isFinite(amt) || amt<=0) return err.textContent='Enter an amount.';
+          if(amt>most+1e-9) return err.textContent='More than this wallet holds.';
+          closeModal();
+          sendTx([w3.SystemProgram.transfer({
+            fromPubkey: new w3.PublicKey(S.me),
+            toPubkey: dest,
+            lamports: Math.round(amt*LAMPORTS)
+          })], 'Sending '+fmtSol(amt)+'…').then(function(sig){
+            S.lastTx=sig;
+            toast('Sent '+fmtSol(amt)+'.');
+            return refreshAll();
+          }).catch(onChainError);
+        };
+      });
+  }
+
+  /// A deposit address is the one thing people want to point a phone at, so
+  /// it gets a QR — from a library rather than by hand. Hand-rolling the
+  /// encoder would be a few hundred lines of Reed-Solomon standing between
+  /// someone and the address their money goes to, which is not a place to
+  /// save a dependency. Loaded only when this screen opens, and if it does
+  /// not load there is simply no QR: the address is underneath in copyable
+  /// text either way.
+  var QR_SRC = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
+  var qrLoading = null;
+  function loadQrLib(){
+    if(window.qrcode) return Promise.resolve(window.qrcode);
+    if(qrLoading) return qrLoading;
+    qrLoading = new Promise(function(res, rej){
+      var t = document.createElement('script');
+      t.src = QR_SRC;
+      t.onload = function(){ window.qrcode ? res(window.qrcode) : rej(new Error('no qrcode')); };
+      t.onerror = function(){ rej(new Error('qr script blocked')); };
+      document.head.appendChild(t);
+    });
+    return qrLoading;
+  }
+
+  function drawQr(host, text){
+    if(!host) return;
+    loadQrLib().then(function(qrcode){
+      // Type 0 picks the smallest version that fits; M corrects ~15%.
+      var qr = qrcode(0, 'M');
+      qr.addData(text);
+      qr.make();
+      var n = qr.getModuleCount(), scale = 5, pad = 4, size = (n + pad*2) * scale;
+      var c = document.createElement('canvas');
+      c.width = c.height = size;
+      var x = c.getContext('2d');
+      x.fillStyle = '#fff'; x.fillRect(0, 0, size, size);
+      x.fillStyle = '#000';
+      for(var r=0;r<n;r++) for(var q=0;q<n;q++){
+        if(qr.isDark(r, q)) x.fillRect((q+pad)*scale, (r+pad)*scale, scale, scale);
+      }
+      host.appendChild(c);
+    }, function(){ host.remove(); });
   }
 
   // Best effort, in the background: unlocks the admin trending editor.
@@ -2274,21 +2637,34 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   }
 
   function accountMenu(){
+    var local = lwUnlocked();
     openModal('<h3 id="mTitle">Your wallet</h3><p style="word-break:break-all">'+esc(S.wallet||'')+'</p>'+
       '<div class="summary"><div><span>Balance</span><span>'+fmtSol(available())+'</span></div>'+
       '<div><span>Network</span><span>'+netWord()+'</span></div>'+
+      '<div><span>Kind</span><span>'+(local?'Made on ibet':'Your own wallet')+'</span></div>'+
       (S.canResolve?'<div><span>Role</span><span>Resolver</span></div>':'')+'</div>'+
+      '<div class="wrow">'+
+        '<button type="button" class="wbtn" id="accDep">Deposit</button>'+
+        (local?'<button type="button" class="wbtn ghost" id="accWd">Withdraw</button>':'')+
+      '</div>'+
+      (local?'<p style="margin:0 0 6px;font-size:13px"><button type="button" class="linkish" id="accKey">Show my private key</button></p>':'')+
       '<p style="margin:0 0 18px;font-size:13px"><a class="exlink" href="'+esc(explorer('address',S.wallet||''))+'" target="_blank" rel="noopener noreferrer">View wallet on Solana Explorer '+IC.ext+'</a></p>'+
-      '<div class="mact"><button class="wbtn ghost" id="signOut">Disconnect</button><button class="wbtn" data-close="1">Close</button></div>',
+      '<div class="mact"><button class="wbtn ghost" id="signOut">'+(local?'Lock':'Disconnect')+'</button><button class="wbtn" data-close="1">Close</button></div>',
       function(){
+        $('accDep').onclick=function(){ closeModal(); depositScreen(); };
+        if($('accWd')) $('accWd').onclick=function(){ closeModal(); withdrawScreen(); };
+        if($('accKey')) $('accKey').onclick=function(){ showSecret(false); };
         $('signOut').onclick=function(){
           closeModal();
           var prov=walletProvider();
-          if(prov && typeof prov.disconnect==='function'){ try{ prov.disconnect(); }catch(_){} }
+          // Locking leaves the encrypted key in this browser; it is not a way
+          // to get rid of the wallet, and saying "Disconnect" would imply it.
+          if(prov && !prov.isLocal && typeof prov.disconnect==='function'){ try{ prov.disconnect(); }catch(_){} }
+          lwLock();
           if(sb) sb.auth.signOut().catch(function(){});
           S.uid=null; S.owner=false;
           setWallet(null);
-          toast('Disconnected.');
+          toast(local ? 'Locked. Your wallet stays in this browser.' : 'Disconnected.');
         };
       });
   }
@@ -2609,10 +2985,12 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
       toast('Bet created and staked. Waiting for a taker.');
       renderWizard(false);
       $('tabs').scrollIntoView({behavior:'smooth',block:'start'});
-      // A bet needs someone on the other side, so the link to it is the most
-      // useful thing to hand over the moment it exists.
-      shareBet(built.pda, 'Bet created — send it to someone');
-      return refreshAll();
+      // After the refresh, not before: shareBet looks the bet up to draw its
+      // card, and until the refresh lands it is not in the list yet. Asking
+      // too early is why the dialog opened with no card in it.
+      return refreshAll().then(function(){
+        shareBet(built.pda, 'Bet created — send it to someone');
+      });
     }).catch(onChainError).then(function(){
       var b=$('wCreate'); if(b) b.disabled=false;
       wizMeta();
