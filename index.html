@@ -339,10 +339,6 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .netbar{background:var(--flame);color:#fff;text-align:center;font-size:12.5px;font-weight:600;padding:7px 16px;letter-spacing:.01em}
 .geobar{background:var(--row);border:1px solid var(--row-line);border-radius:12px;padding:14px 16px;margin:0 0 18px;font-size:14px;color:var(--text2)}
 .geobar b{color:var(--text)}
-.terms{font-size:14px;color:var(--text2);line-height:1.7}
-.terms ul{margin:10px 0 0;padding-left:18px}
-.termsrow{display:flex;gap:10px;align-items:flex-start;margin:18px 0 0;font-size:14px}
-.termsrow input{margin-top:3px;width:18px;height:18px;accent-color:var(--green)}
 .netbar a{color:#fff;text-decoration:underline;text-underline-offset:2px}
 .exlink{display:inline-flex;align-items:center;gap:4px;color:var(--faint);text-decoration:none}
 .exlink:hover{color:var(--text2)}
@@ -426,7 +422,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
 
 <footer class="wrap">
   <span id="footNet">ibet beta</span>
-  <span>Any Solana token by CA · check the chart before you bet.</span>
+  <span>Any Solana token by CA · check the chart before you bet. · <a href="/terms.html">Terms</a></span>
 </footer>
 
 <div id="modalRoot"></div>
@@ -790,56 +786,14 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   var GEO_EXEMPT = 'EDiALz4fYTJcNaTcoAuuo6X5rWsvys199dnwgeWCyW5Q';
   function geoBlocked(){ return GEO.blocked && S.me !== GEO_EXEMPT; }
 
-  var TERMS_VERSION = '2026-09-28';
-  var TERMS_KEY = 'ibet.terms.' + TERMS_VERSION;
-
-  function hasAcceptedTerms(){
-    if(!S.me) return false;
-    if(S.termsOk) return true;
-    try{ return localStorage.getItem(TERMS_KEY+'.'+S.me) === '1'; }catch(_){ return false; }
-  }
-
-  // Asked once per wallet, before its first bet. Recorded in Supabase so it is
-  // not just a checkbox in one browser.
-  function askTerms(next){
-    openModal('<h3 id="mTitle">Before your first bet</h3>'+
-      '<div class="terms"><p><b>ibet is in beta.</b> Bets are settled automatically from 1-minute candles, and the '+
-      'market cap you are judged on is the one shown on the chart.</p>'+
-      '<ul><li>Stakes are capped — the site shows the current limit.</li>'+
-      '<li>A bet is won the moment the target is touched; there is no dispute or appeal.</li>'+
-      '<li>If settlement ever fails, anyone can refund the bet after 48 hours and both sides get their stake back.</li>'+
-      '<li>Only bet what you can afford to lose.</li></ul>'+
-      '<p style="margin-top:14px"><a href="/terms.html" target="_blank" rel="noopener noreferrer">Read the full terms</a></p></div>'+
-      '<label class="termsrow"><input type="checkbox" id="termsBox">'+
-      '<span>I am 18 or older and I accept the terms.</span></label>'+
-      '<div class="mact"><button class="wbtn ghost" data-close="1">Cancel</button>'+
-      '<button class="wbtn" id="termsGo" disabled>Continue</button></div>',
-      function(){
-        var box=$('termsBox'), go=$('termsGo');
-        box.onchange=function(){ go.disabled = !box.checked; };
-        go.onclick=function(){
-          if(!box.checked) return;
-          S.termsOk = true;
-          try{ localStorage.setItem(TERMS_KEY+'.'+S.me, '1'); }catch(_){}
-          if(sb) sb.from('terms_acceptance').insert({
-            wallet: S.me, terms_version: TERMS_VERSION, country: GEO.country || null
-          }).then(function(){}, function(){});
-          closeModal();
-          if(next) next();
-        };
-      });
-  }
-
-  /// Runs `next` once the wallet is connected, allowed to bet here, and has
-  /// agreed. Used by both create and take — the only two things that put new
-  /// money in.
+  /// Runs `next` once the wallet is connected and allowed to bet here. Used by
+  /// both create and take — the only two things that put new money in.
   function gateBetting(next){
     if(!S.me) return connect();
     if(geoBlocked()){
       toast('Betting isn’t available in your country. You can still cancel or refund your own bets.');
       return;
     }
-    if(!hasAcceptedTerms()) return askTerms(next);
     next();
   }
 
@@ -1494,7 +1448,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
 
   // me = the connected wallet address (identities are wallets now, not rows);
   // uid = the Supabase user id, only used for the admin-only trending list.
-  var S = { bets:[], me:null, uid:null, owner:false, canResolve:false, bal:0, names:{}, termsOk:false,
+  var S = { bets:[], me:null, uid:null, owner:false, canResolve:false, bal:0, names:{},
             tab:'open', view:'bet', coin:'', dir:'above', mode:'loading', busy:{}, wallet:null };
   var $ = function(id){ return document.getElementById(id); };
 
@@ -2257,7 +2211,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   }
   function createBet(){
     if(!S.me) return connect();
-    if(geoBlocked() || !hasAcceptedTerms()) return gateBetting(createBet);
+    if(geoBlocked()) return gateBetting(createBet);
     var t=wTarget(), st=wStake();
     if(!step1ok()||!step2ok()) return;
     if(!CFG) return toast('Still reading the escrow config — one moment.');
@@ -2295,7 +2249,7 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   function askTake(id){
     var b=find(id); if(!b) return;
     if(!S.me) return connect();
-    if(geoBlocked() || !hasAcceptedTerms()) return gateBetting(function(){ askTake(id); });
+    if(geoBlocked()) return gateBetting(function(){ askTake(id); });
     if(b.creator===S.me) return toast('You can’t take your own bet.');
     if(b.stake>available()+1e-9) return toast('Not enough '+solWord()+' — you have '+fmtSol(available())+'.');
     var sp = split(b.stake);
