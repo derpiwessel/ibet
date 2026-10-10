@@ -205,6 +205,9 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .betgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .bx{border:1px solid var(--row-line);border-radius:14px;padding:18px 22px;display:flex;flex-direction:column;gap:12px}
 .bx>label,.bx>.lbl{font-size:14px;color:var(--muted)}
+.sharecard{margin:0 0 14px;border:1px solid var(--row-line);border-radius:12px;overflow:hidden;background:#000}
+.sharecard canvas{display:block;width:100%;height:auto}
+.sharecard-wait{padding:42px 0;text-align:center;font-size:13.5px;color:var(--muted)}
 .sharelink{margin:0 0 18px;padding:11px 13px;border:1px solid var(--row-line);border-radius:10px;
   background:var(--bg);color:var(--text2);font-size:13px;word-break:break-all;line-height:1.5}
 /* Brief ring on the bet someone arrived here to see. */
@@ -233,7 +236,7 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .rowp-nums dt{font-size:12.5px;color:var(--muted)}
 .rowp-nums dd{margin:0;font-size:16px;font-weight:600;color:var(--text2)}
 .rowp-nums .win dd{color:var(--text)}
-.rowp-act{display:flex;justify-content:flex-end}
+.rowp-act{display:flex;justify-content:flex-end;gap:10px}
 @media (max-width:860px){
   .rowp{grid-template-columns:1fr;gap:18px}
   .rowp-act .wbtn{width:100%}
@@ -308,7 +311,10 @@ header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 8
 .summary div{display:flex;justify-content:space-between;padding:11px 0;border-top:1px solid var(--row-line);font-size:15px}
 .summary div:first-child{border-top:none}
 .summary span:first-child{color:var(--muted)}
-.mact{display:flex;gap:10px}.mact .wbtn{flex:1}
+.mact{display:flex;gap:10px;flex-wrap:wrap}.mact .wbtn{flex:1 1 auto;min-width:0;white-space:nowrap}
+/* Three actions do not fit a phone on one line; let them wrap into a grid
+   rather than letting the last one slide off the edge. */
+@media (max-width:460px){ .mact .wbtn{flex:1 1 calc(50% - 5px)} }
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--btn);color:var(--btn-fg);padding:12px 18px;border-radius:12px;font-size:14px;font-weight:500;z-index:60;box-shadow:var(--shadow);max-width:calc(100% - 32px)}
 .banner{margin:0 0 18px;padding:12px 16px;border-radius:12px;border:1px solid var(--row-line);background:var(--row);font-size:13px;color:var(--muted)}
 /* ── coin card ── */
@@ -1494,9 +1500,12 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     var act = '';
     if(b.status==='open'){
       var busy = !!S.busy[b.id];
-      act = mine
-        ? '<button class="wbtn ghost" data-act="cancel" data-id="'+esc(b.id)+'"'+(busy?' disabled':'')+'>'+(busy?'Cancelling…':'Cancel bet')+'</button>'
-        : '<button class="wbtn" data-act="take" data-id="'+esc(b.id)+'"'+(busy?' disabled':'')+'>'+(busy?'Taking…':'Accept bet · '+fmtSol(b.stake))+'</button>';
+      // Sharing lives here too, not only in the dialog that appears once when
+      // a bet is created — close that and the link and the card were gone.
+      act = '<button class="wbtn ghost" data-act="share" data-id="'+esc(b.id)+'">Share</button>'+
+        (mine
+          ? '<button class="wbtn ghost" data-act="cancel" data-id="'+esc(b.id)+'"'+(busy?' disabled':'')+'>'+(busy?'Cancelling…':'Cancel bet')+'</button>'
+          : '<button class="wbtn" data-act="take" data-id="'+esc(b.id)+'"'+(busy?' disabled':'')+'>'+(busy?'Taking…':'Accept bet · '+fmtSol(b.stake))+'</button>');
     }
 
     return '<div class="rowp">'+
@@ -1809,6 +1818,201 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
   function rpc(name,args){ return sb.rpc(name,args||{}).then(function(r){ if(r.error) throw r.error; return r.data; }); }
   function find(id){ for(var i=0;i<S.bets.length;i++) if(S.bets[i].id===id) return S.bets[i]; return null; }
 
+
+  // ── the share card ───────────────────────────────────────────────────────
+  // A bet is a claim, and a claim travels better as a picture than as a URL.
+  // Drawn on a canvas in the browser: no build step, no server, and nothing
+  // leaves the page until someone saves it.
+  //
+  // The coin's logo is on someone else's CDN and most of them send no CORS
+  // header, which taints the canvas and makes toBlob throw. So it is drawn
+  // only if it loads cross-origin cleanly, and otherwise falls back to the
+  // same coloured letter badge the site uses everywhere else.
+  var CARD_W = 1200, CARD_H = 900;
+
+  function loadCorsImage(src){
+    return new Promise(function(res){
+      if(!src) return res(null);
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = function(){ res(img); };
+      img.onerror = function(){ res(null); };
+      img.src = src;
+    });
+  }
+
+  /// Shrinks the font until the text fits, so a long ticker or a nine-figure
+  /// market cap cannot run off the edge.
+  function fitText(ctx, text, font, size, maxW){
+    var s = size;
+    for(;;){
+      ctx.font = font.replace('%s', s+'px');
+      if(ctx.measureText(text).width <= maxW || s <= 18) return s;
+      s -= 2;
+    }
+  }
+
+  /// A polygon with real rounded corners, so the arrow can be filled dark and
+  /// rimmed with light the way the design has it. Stroking a sharp polygon
+  /// with a fat round join looks rounded from outside but leaves the fill
+  /// poking through at every corner.
+  function roundPoly(ctx, pts, r){
+    ctx.beginPath();
+    for(var i=0;i<pts.length;i++){
+      var prev = pts[(i-1+pts.length)%pts.length], cur = pts[i], next = pts[(i+1)%pts.length];
+      var v1 = { x: prev[0]-cur[0], y: prev[1]-cur[1] }, v2 = { x: next[0]-cur[0], y: next[1]-cur[1] };
+      var l1 = Math.hypot(v1.x, v1.y) || 1, l2 = Math.hypot(v2.x, v2.y) || 1;
+      var rr = Math.min(r, l1/2, l2/2);
+      var a = { x: cur[0] + v1.x/l1*rr, y: cur[1] + v1.y/l1*rr };
+      var b = { x: cur[0] + v2.x/l2*rr, y: cur[1] + v2.y/l2*rr };
+      if(i===0) ctx.moveTo(a.x, a.y); else ctx.lineTo(a.x, a.y);
+      ctx.quadraticCurveTo(cur[0], cur[1], b.x, b.y);
+    }
+    ctx.closePath();
+  }
+
+  function drawArrow(ctx, x, y, w, h, up, accent){
+    var cx = x + w/2, shaft = w*0.36, headH = h*0.44, l = cx - shaft/2, rgt = cx + shaft/2;
+    var pts = up
+      ? [[cx,y],[x+w,y+headH],[rgt,y+headH],[rgt,y+h],[l,y+h],[l,y+headH],[x,y+headH]]
+      : [[cx,y+h],[x+w,y+h-headH],[rgt,y+h-headH],[rgt,y],[l,y],[l,y+h-headH],[x,y+h-headH]];
+
+    ctx.save();
+    // Glow first, from the shape itself rather than a fat stroke.
+    roundPoly(ctx, pts, 30);
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = 90;
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = accent;
+    ctx.stroke();
+    ctx.shadowBlur = 45;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    // A dark body, so the rim reads as light on an object.
+    ctx.fillStyle = '#0B0B0C';
+    ctx.fill();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = accent;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawBetCard(b){
+    var up = b.dir === 'above';
+    var accent = up ? '#22C55E' : '#F0493E';
+    var cap = fmtCap(b.target);
+    var tick = label(b);
+    var m = META[b.ca] || {};
+
+    var c = document.createElement('canvas');
+    c.width = CARD_W; c.height = CARD_H;
+    var ctx = c.getContext('2d');
+    var TIGHT = "800 %s 'Inter Tight','Inter',Helvetica,Arial,sans-serif";
+    var UI    = "600 %s 'Inter',Helvetica,Arial,sans-serif";
+    var UIR   = "500 %s 'Inter',Helvetica,Arial,sans-serif";
+
+    return (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve())
+      .then(function(){ return loadCorsImage(m.image_url || null); })
+      .then(function(logo){
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, CARD_W, CARD_H);
+
+        drawArrow(ctx, 752, 160, 372, 500, up, accent);
+
+        // ── wordmark ──
+        ctx.fillStyle = '#fff';
+        ctx.textBaseline = 'alphabetic';
+        ctx.font = TIGHT.replace('%s', '52px');
+        // Measured rather than guessed: the arrow glyphs are a fallback font
+        // and their width is not something to hardcode.
+        var marks = '↑↓';
+        ctx.fillText(marks, 68, 98);
+        ctx.fillText('ibet', 68 + ctx.measureText(marks).width + 16, 98);
+
+        // ── status pill ──
+        var pillW = 196, pillH = 50, pillX = CARD_W - 72 - pillW, pillY = 50;
+        ctx.strokeStyle = '#3A3A40'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(pillX, pillY, pillW, pillH, pillH/2); ctx.stroke();
+        ctx.fillStyle = accent;
+        ctx.beginPath(); ctx.arc(pillX + 32, pillY + pillH/2, 9, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = UI.replace('%s', '21px');
+        ctx.fillText('OPEN BET', pillX + 54, pillY + 33);
+
+        // ── coin ──
+        var av = { x: 72, y: 158, r: 40 };
+        ctx.save();
+        ctx.beginPath(); ctx.arc(av.x + av.r, av.y + av.r, av.r, 0, Math.PI*2); ctx.clip();
+        if(logo){
+          ctx.drawImage(logo, av.x, av.y, av.r*2, av.r*2);
+        } else {
+          ctx.fillStyle = coinColor(b.ca);
+          ctx.fillRect(av.x, av.y, av.r*2, av.r*2);
+          ctx.fillStyle = 'rgba(0,0,0,.72)';
+          ctx.textAlign = 'center';
+          var bt = badge(b);
+          ctx.font = TIGHT.replace('%s', fitText(ctx, bt, TIGHT, 30, av.r*1.5)+'px');
+          ctx.fillText(bt, av.x + av.r, av.y + av.r + 10);
+          ctx.textAlign = 'left';
+        }
+        ctx.restore();
+
+        ctx.fillStyle = '#fff';
+        ctx.font = TIGHT.replace('%s', '40px');
+        ctx.fillText(tick, 180, 196);
+        ctx.fillStyle = '#9C9CA3';
+        ctx.font = UIR.replace('%s', '25px');
+        ctx.fillText(shortCa(b.ca), 180, 232);
+
+        // ── the claim ──
+        var lead = up ? 'I bet it hits' : 'I bet it drops to';
+        ctx.fillStyle = '#fff';
+        var leadSize = fitText(ctx, lead, TIGHT, 76, 620);
+        ctx.font = TIGHT.replace('%s', leadSize+'px');
+        ctx.fillText(lead, 68, 350);
+
+        var capSize = fitText(ctx, cap, TIGHT, 150, 640);
+        ctx.font = TIGHT.replace('%s', capSize+'px');
+        ctx.fillText(cap, 62, 350 + 30 + capSize*0.86);
+
+        ctx.font = TIGHT.replace('%s', '76px');
+        ctx.fillText('market cap.', 68, 610);
+
+        // ── the terms ──
+        ctx.strokeStyle = '#2A2A2E'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(68, 660); ctx.lineTo(CARD_W - 68, 660); ctx.stroke();
+
+        var cols = [
+          ['MY STAKE', fmtSol(b.stake).toUpperCase()],
+          ['TIMEFRAME', fmtDur(b.durSecs).toUpperCase()],
+          ['YOUR SIDE', (up ? 'BELOW ' : 'ABOVE ') + cap]
+        ];
+        cols.forEach(function(col, i){
+          var cxp = 68 + i * 372;
+          if(i){ ctx.beginPath(); ctx.moveTo(cxp - 44, 684); ctx.lineTo(cxp - 44, 772); ctx.stroke(); }
+          ctx.fillStyle = '#9C9CA3';
+          ctx.font = UIR.replace('%s', '23px');
+          ctx.fillText(col[0], cxp, 712);
+          ctx.fillStyle = '#fff';
+          var vs = fitText(ctx, col[1], TIGHT, 42, 330);
+          ctx.font = TIGHT.replace('%s', vs+'px');
+          ctx.fillText(col[1], cxp, 766);
+        });
+
+        // ── footer ──
+        ctx.fillStyle = '#fff';
+        ctx.font = TIGHT.replace('%s', '34px');
+        ctx.fillText('Think I’m wrong? Take the bet.', 68, 846);
+        ctx.fillStyle = '#9C9CA3';
+        ctx.font = UIR.replace('%s', '28px');
+        ctx.textAlign = 'right';
+        ctx.fillText('i-bet.fun', CARD_W - 68, 846);
+        ctx.textAlign = 'left';
+
+        return c;
+      });
+  }
+
   // ── sharing a bet ────────────────────────────────────────────────────────
   // A bet's address is its PDA, which is already public and already in the
   // page, so a link is just that address. Nothing about it is secret: anyone
@@ -1817,12 +2021,15 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
 
   function shareBet(id, heading){
     var url = betLink(id);
+    var bet = find(id);
     var native = typeof navigator.share === 'function';
     openModal('<h3 id="mTitle">'+esc(heading || 'Share this bet')+'</h3>'+
       '<p style="margin:0 0 14px;font-size:14px;color:var(--muted)">Anyone with this link lands on your bet and can take the other side.</p>'+
+      (bet ? '<div class="sharecard" id="shareCard"><div class="sharecard-wait">Drawing your card…</div></div>' : '')+
       '<p class="sharelink">'+esc(url)+'</p>'+
       '<div class="mact">'+
         '<button class="wbtn ghost" data-close="1">Done</button>'+
+        (bet ? '<button class="wbtn ghost" id="shareImg" disabled>Save image</button>' : '')+
         (native ? '<button class="wbtn ghost" id="shareNative">Share…</button>' : '')+
         '<button class="wbtn" data-copy="'+esc(url)+'" data-copy-label="Link copied">Copy link</button>'+
       '</div>',
@@ -1832,7 +2039,43 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
           navigator.share({ title:'ibet', text:'Take the other side of my bet on ibet', url:url })
             .catch(function(){ /* dismissed, or the browser refused */ });
         };
+        if(bet) mountShareCard(bet);
       });
+  }
+
+  /// Draws the card, shows it, and wires up saving it. Everything here is
+  /// best-effort: the card is a nice-to-have, and a browser that refuses to
+  /// draw or save it must not break sharing the link.
+  function mountShareCard(bet){
+    drawBetCard(bet).then(function(canvas){
+      var slot = $('shareCard'), save = $('shareImg');
+      if(!slot) return;
+      slot.innerHTML = '';
+      canvas.setAttribute('role', 'img');
+      canvas.setAttribute('aria-label',
+        'Share card: ' + label(bet) + ' ' + (bet.dir==='above'?'above':'below') + ' ' + fmtCap(bet.target));
+      slot.appendChild(canvas);
+      if(!save) return;
+      save.disabled = false;
+      save.onclick = function(){
+        try{
+          canvas.toBlob(function(blob){
+            if(!blob) return toast('Your browser wouldn’t export the image.');
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'ibet-' + label(bet).toLowerCase() + '-' + fmtCap(bet.target).replace(/[^0-9a-z]/gi,'') + '.png';
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(function(){ URL.revokeObjectURL(a.href); }, 10000);
+          }, 'image/png');
+        }catch(_){
+          // A logo served without CORS taints the canvas and export throws.
+          toast('Couldn’t save the image — the coin’s logo blocked it.');
+        }
+      };
+    }, function(){
+      var slot = $('shareCard');
+      if(slot) slot.remove();
+    });
   }
 
   /// A visitor arriving on ?bet=<address> should land on that bet rather than
@@ -2479,7 +2722,11 @@ footer{padding:44px 0;display:flex;justify-content:space-between;gap:16px;flex-w
     if(t.dataset.go){ var g=t.dataset.go; if(g==='leader') S.view='leader'; else { S.view='bet'; S.tab = g==='mine' ? 'mine' : (S.tab==='mine'?'open':S.tab); } render(); window.scrollTo({top:0,behavior:'smooth'}); return; }
     if(t.dataset.tab){ S.tab=t.dataset.tab; render(); return; }
     var id=t.dataset.id, a=t.dataset.act;
-    if(a==='take') askTake(id); else if(a==='cancel') cancel(id); else if(a==='resolve') askResolve(id); else if(a==='refund') refund(id);
+    if(a==='take') askTake(id);
+    else if(a==='cancel') cancel(id);
+    else if(a==='resolve') askResolve(id);
+    else if(a==='refund') refund(id);
+    else if(a==='share') shareBet(id);
   });
   $('coinFilter').onchange=function(){ S.coin=this.value; renderTabs(); renderList(); };
   setInterval(function(){ if(S.bets.some(function(b){return b.status==='matched';})) renderList(); },15000);
