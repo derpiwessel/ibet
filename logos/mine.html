@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>$PICK mine — mine-it</title>
+<meta name="theme-color" content="#0C0907">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;600;700&family=Geologica:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+.kv{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.kv span:first-child{font-size:15px;color:#CDBFAB}
+.kv span:last-child{font-family:"DM Mono",ui-monospace,monospace;font-size:15px;font-variant-numeric:tabular-nums}
+.feed-row{display:flex;justify-content:space-between;gap:12px;font-family:"DM Mono",ui-monospace,monospace;font-size:13px;font-variant-numeric:tabular-nums;padding-block:6px;border-bottom:1px solid #1E1611}
+</style>
+</head>
+<body>
+
+<nav class="nav wrap">
+  <div class="inner">
+    <a href="/" class="brand" aria-label="mine-it home">
+      <svg width="28" height="28" viewBox="0 0 14 14" aria-hidden="true" shape-rendering="crispEdges"><rect x="2" y="2" width="9" height="2" fill="#B9C0BE"/><rect x="1" y="3" width="2" height="2" fill="#B9C0BE"/><rect x="10" y="3" width="2" height="2" fill="#B9C0BE"/><rect x="6" y="4" width="2" height="9" fill="#8A5626"/><rect x="6" y="12" width="2" height="1" fill="#5E3A18"/><rect x="11" y="9" width="2" height="2" fill="#6FE3C8"/><rect x="12" y="8" width="1" height="1" fill="#BFFCEB"/></svg>
+      <span>mine-it</span>
+    </a>
+    <div class="nav-links">
+      <a href="/#mines" class="nav-link hide-sm">Mines</a>
+      <a href="/mine" class="nav-link hide-sm" aria-current="page">My ore</a>
+      <div data-wallet></div>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap">
+  <div class="inner" style="padding-block:32px 72px;display:flex;flex-direction:column;gap:28px">
+
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:18px">
+        <span class="display" style="width:64px;height:64px;background:#F0A04B;display:grid;place-items:center;font-size:32px;font-weight:700;color:#120C09;box-shadow:inset 0 -6px 0 #A8662A">P</span>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <a href="/#mines" class="mono" style="font-size:12px;text-decoration:none;color:#A8977F">← all mines</a>
+          <h1 class="display" style="margin:0;font-weight:700;font-size:clamp(36px,5vw,60px);line-height:1">$PICK mine</h1>
+        </div>
+      </div>
+      <div class="mono" style="display:flex;gap:28px;flex-wrap:wrap;font-size:13px;color:#A8977F">
+        <span>1,284 miners</span><span>412 SOL bought back 24h</span><span class="muted">simulated</span>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
+
+      <div style="flex:999 1 560px;min-width:0">
+        <div class="frame px">
+          <canvas id="shaft" class="cv" width="240" height="140" role="img" aria-label="Your miner digs the $PICK vein and drops ore in a cart. Claiming sends the cart up the shaft."></canvas>
+        </div>
+        <div style="border:2px solid #241A14;border-top:0;padding:16px 20px;display:flex;flex-direction:column;gap:10px">
+          <div class="eyebrow" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>Ore left in the vein</span><span id="vein-left" class="num" style="color:#6FE3C8;letter-spacing:0;font-size:13px">18.42M $PICK</span></div>
+          <div id="vein-bar" style="display:flex;gap:2px" aria-hidden="true"></div>
+          <div class="muted" style="font-size:13px">Refills on every trade. Each buyback buries more ore here.</div>
+        </div>
+      </div>
+
+      <div style="flex:1 1 340px;min-width:0;display:flex;flex-direction:column;gap:16px">
+        <div class="panel px" style="padding:22px;display:flex;flex-direction:column;gap:16px">
+          <div class="eyebrow">Pending ore</div>
+          <div id="pending" class="display num" style="font-size:48px;line-height:1;color:#6FE3C8">28,140</div>
+          <div class="mono num" style="font-size:13px;color:#A8977F">+<span id="rate">2,280</span> $PICK / min at your share</div>
+          <button id="claim" type="button" class="btn btn-amber btn-lg px" style="justify-content:center">Claim 28K $PICK</button>
+          <div class="mono num muted" style="display:flex;justify-content:space-between;font-size:12px"><span>Claimed so far</span><span id="claimed" style="color:#EFE6D8">412,600 $PICK</span></div>
+        </div>
+
+        <div class="panel px" style="padding:22px;display:flex;flex-direction:column;gap:14px">
+          <div class="eyebrow">Your swing</div>
+          <div class="kv"><span>Bag</span><span>4,200,000 $PICK</span></div>
+          <div class="kv"><span>Share of supply</span><span>0.42%</span></div>
+          <div id="share-bar" style="display:flex;gap:3px" aria-hidden="true"></div>
+          <div class="muted" style="font-size:13px;line-height:1.5">You get 0.42% of every swing in this mine. Buy more to swing harder, sell and your share drops with it.</div>
+          <div id="wallet-note" class="mono muted" style="font-size:12px">Sample bag. Connect your wallet to see your own.</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px;padding:4px 2px">
+          <div class="eyebrow" style="display:flex;align-items:center;gap:8px"><span class="live"></span><span>Buybacks into this vein</span></div>
+          <div id="feed"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="/assets/engine.js"></script>
+<script src="/assets/wallet.js"></script>
+<script src="/assets/mine.js"></script>
+</body>
+</html>

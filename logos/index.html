@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>mine-it — launch a coin, mine the buybacks</title>
+<meta name="description" content="Launch a memecoin where every trading fee buys it back. The bought-back supply is buried as ore, and holders mine it out.">
+<meta name="theme-color" content="#0C0907">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;600;700&family=Geologica:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+.hero{padding-block:56px 28px;display:flex;align-items:flex-end;justify-content:space-between;gap:32px 48px;flex-wrap:wrap}
+.hero h1{margin:0;font-weight:700;font-size:clamp(44px,7vw,92px);line-height:.95;letter-spacing:-.01em;text-wrap:balance}
+.hero p{margin:0;max-width:54ch;font-size:18px;line-height:1.55;color:#CDBFAB;font-weight:300}
+.stats{display:flex;flex-wrap:wrap;border:2px solid #241A14;border-top:0}
+.stat{flex:1 1 200px;padding:16px 20px;border-right:2px solid #241A14;display:flex;flex-direction:column;gap:4px}
+.stat .v{font-family:"Pixelify Sans",monospace;font-size:30px;font-variant-numeric:tabular-nums}
+.feed{flex:3 1 380px;min-width:0;padding:14px 20px;display:flex;flex-direction:column;gap:8px}
+.feed-row{display:flex;justify-content:space-between;gap:12px;font-family:"DM Mono",ui-monospace,monospace;font-size:13px;font-variant-numeric:tabular-nums}
+.feed-row .l{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sec-head{display:flex;flex-direction:column;gap:14px;max-width:760px}
+.h2{margin:0;font-weight:700;font-size:clamp(32px,4.4vw,56px);line-height:1;text-wrap:balance}
+.lede{margin:0;font-size:17px;line-height:1.6;color:#CDBFAB;font-weight:300;max-width:60ch}
+.stations{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));border-top:2px solid #241A14}
+.station{padding:22px 22px 8px 0;display:flex;flex-direction:column;gap:10px;border-top:4px solid #241A14;margin-top:-3px;transition:border-color .3s}
+.station .t{font-family:"Pixelify Sans",monospace;font-size:26px;font-weight:600;transition:color .3s}
+.station.on{border-top-color:#6FE3C8}.station.on .t{color:#6FE3C8}
+.station p{margin:0;font-size:15px;line-height:1.55;color:#CDBFAB;max-width:34ch}
+.ledger{overflow-x:auto;border:2px solid #241A14}
+.ledger-grid{display:grid;grid-template-columns:1.3fr 2fr 1fr 1fr 1fr 110px;gap:16px;align-items:center;padding:16px 20px}
+.ledger-head{padding-block:12px;font-family:"DM Mono",ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#7E705E;border-bottom:2px solid #241A14}
+.row{border-bottom:1px solid #1E1611;text-decoration:none;color:#EFE6D8;transition:background .15s}
+.row:hover{background:#1A130E;color:#EFE6D8}.row:hover .enter{color:#6FE3C8}
+.r{text-align:right;font-family:"DM Mono",ui-monospace,monospace;font-size:14px;font-variant-numeric:tabular-nums}
+.bar{display:flex;gap:2px}.bar span{width:6px;height:14px}
+.cta{padding:48px clamp(20px,5vw,64px);display:flex;justify-content:space-between;align-items:center;gap:28px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+
+<nav class="nav wrap">
+  <div class="inner">
+    <a href="/" class="brand" aria-label="mine-it home">
+      <svg width="28" height="28" viewBox="0 0 14 14" aria-hidden="true" shape-rendering="crispEdges"><rect x="2" y="2" width="9" height="2" fill="#B9C0BE"/><rect x="1" y="3" width="2" height="2" fill="#B9C0BE"/><rect x="10" y="3" width="2" height="2" fill="#B9C0BE"/><rect x="6" y="4" width="2" height="9" fill="#8A5626"/><rect x="6" y="12" width="2" height="1" fill="#5E3A18"/><rect x="11" y="9" width="2" height="2" fill="#6FE3C8"/><rect x="12" y="8" width="1" height="1" fill="#BFFCEB"/></svg>
+      <span>mine-it</span>
+    </a>
+    <div class="nav-links">
+      <a href="#mines" class="nav-link hide-sm">Mines</a>
+      <a href="#how" class="nav-link hide-sm">How it works</a>
+      <a href="/mine" class="nav-link hide-sm">My ore</a>
+      <div data-wallet></div>
+      <a href="/launch" class="btn btn-amber btn-sm px">Launch a coin</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <section class="wrap">
+    <div class="inner hero">
+      <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column;gap:18px">
+        <h1 class="display">Mine any coin.</h1>
+        <p>Launch a coin where every trading fee buys it back. The bought-back supply is buried in the coin's vein as ore, and holders mine it out in proportion to their bag.</p>
+      </div>
+      <div style="flex:1 1 280px;display:flex;gap:12px;flex-wrap:wrap">
+        <a href="/launch" class="btn btn-amber btn-lg px">Launch a coin</a>
+        <a href="/mine" class="btn btn-dark btn-lg px">Start mining</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="inner">
+      <div class="frame px">
+        <div style="background:#060404;cursor:crosshair">
+          <canvas id="cave" class="cv" width="320" height="150" role="img" aria-label="Pixel cave: buybacks fall down the shaft and become ore, miners dig it out. Click an ore vein to swing at it."></canvas>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="eyebrow">Ore buried</div><div class="v" id="buried" style="color:#6FE3C8">18.4M</div></div>
+        <div class="stat"><div class="eyebrow">Ore mined by holders</div><div class="v" id="mined">6.15M</div></div>
+        <div class="feed">
+          <div class="eyebrow" style="display:flex;align-items:center;gap:8px"><span class="live"></span><span>Buybacks · $PICK mine · simulated</span></div>
+          <div id="feed" style="display:flex;flex-direction:column;gap:4px"></div>
+        </div>
+      </div>
+      <div class="mono muted" style="font-size:12px;padding-block:10px">Tip: move your cursor through the cave for torchlight, click a glowing vein to swing at it.</div>
+    </div>
+  </section>
+
+  <section id="how" class="wrap">
+    <div class="inner" style="padding-block:96px 40px;display:flex;flex-direction:column;gap:36px">
+      <div class="sec-head">
+        <div class="eyebrow" style="font-size:12px;letter-spacing:.16em">The loop</div>
+        <h2 class="h2 display">Every trade refills the vein.</h2>
+        <p class="lede">No team bag gets the fees. They go straight back into the chart as buybacks, and the coins they buy go underground for holders to dig up.</p>
+      </div>
+      <div class="px" style="background:#17110D;padding:6px">
+        <canvas id="track" class="cv" width="320" height="44" role="img" aria-label="A mine cart carries the trading fee to the buyback, dumps the bought tokens into the vein, and a miner digs them out for holders."></canvas>
+      </div>
+      <div class="stations" id="stations">
+        <div class="station"><div style="display:flex;align-items:baseline;gap:10px"><span class="mono muted" style="font-size:12px">01</span><span class="t">Trade</span></div><p>Every buy and sell pays a 1% fee. That is the only fuel this mine runs on.</p></div>
+        <div class="station"><div style="display:flex;align-items:baseline;gap:10px"><span class="mono muted" style="font-size:12px">02</span><span class="t">Buy back</span></div><p>The fee goes straight back into the chart and market-buys the coin. Nobody skims it.</p></div>
+        <div class="station"><div style="display:flex;align-items:baseline;gap:10px"><span class="mono muted" style="font-size:12px">03</span><span class="t">Bury</span></div><p>The bought-back coins don’t sit in a wallet. They get buried in the vein as ore.</p></div>
+        <div class="station"><div style="display:flex;align-items:baseline;gap:10px"><span class="mono muted" style="font-size:12px">04</span><span class="t">Mine</span></div><p>Holders mine the vein. Your share of every swing is your share of the supply. Claim whenever.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="mines" class="wrap">
+    <div class="inner" style="padding-block:72px 40px;display:flex;flex-direction:column;gap:24px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="eyebrow" style="font-size:12px;letter-spacing:.16em">Open mines · sample data</div>
+          <h2 class="h2 display">Pick a vein.</h2>
+        </div>
+        <a href="/launch" class="mono" style="font-size:14px;text-decoration:none">or dig your own →</a>
+      </div>
+      <div class="ledger">
+        <div style="min-width:760px">
+          <div class="ledger-grid ledger-head"><span>Coin</span><span>Ore still buried</span><span style="text-align:right">Mined 24h</span><span style="text-align:right">Miners</span><span style="text-align:right">Buybacks 24h</span><span></span></div>
+          <div id="ledger"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="inner" style="padding-block:72px 96px">
+      <div class="panel px cta">
+        <div style="display:flex;flex-direction:column;gap:12px;max-width:620px">
+          <h2 class="display" style="margin:0;font-weight:700;font-size:clamp(30px,4vw,48px);line-height:1.02">Open your own mine.</h2>
+          <p style="margin:0;font-size:17px;line-height:1.55;color:#CDBFAB;font-weight:300">Name, ticker, image. The vein opens empty and the first trade starts the first buyback.</p>
+        </div>
+        <a href="/launch" class="btn btn-amber btn-lg px">Launch a coin</a>
+      </div>
+      <footer class="mono muted" style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-top:40px;font-size:12px">
+        <span>mine-it.fun · demo · all figures are simulated</span>
+        <span>trading fee in this demo: 1%</span>
+      </footer>
+    </div>
+  </section>
+</main>
+
+<script src="/assets/engine.js"></script>
+<script src="/assets/wallet.js"></script>
+<script src="/assets/landing.js"></script>
+</body>
+</html>
